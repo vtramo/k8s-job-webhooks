@@ -1,29 +1,32 @@
 use std::collections::BTreeMap;
+
 use futures_util::{pin_mut, TryStreamExt};
-use k8s_openapi::api::batch::v1::{Job, JobSpec, JobStatus};
+use k8s_openapi::api::batch::v1::{Job, JobStatus};
 use k8s_openapi::serde_json::json;
-use kube::{Api, Client};
+use kube::{Api, Client, ResourceExt};
 use kube::api::{Patch, PatchParams};
 use kube::runtime::{watcher, WatchStreamExt};
-use crate::monitors;
-use crate::models::WebHook;
+use kube::runtime::reflector::Lookup;
 
-static K8S_WEBHOOKS_CALLED_LABEL: &'static str = "app.k8s.job.monitor/webhooks-called";
+use crate::models::WebHook;
+use crate::monitors;
+
+const K8S_WEBHOOKS_CALLED_LABEL: &'static str = "app.k8s.job.monitor/webhooks-called";
 
 pub async fn watch_jobs() {
     let client = Client::try_default().await.unwrap();
     let jobs: Api<Job> = Api::default_namespaced(client);
-    let mut stream = watcher(jobs.clone(), watcher::Config::default()).default_backoff().applied_objects();
+    let stream = watcher(jobs.clone(), watcher::Config::default()).default_backoff().applied_objects();
     pin_mut!(stream);
 
     while let Some(event) = stream.try_next().await.unwrap() {
-        let is_already_scanned_job = event.clone().metadata.labels
-            .map(|job_labels| is_already_scanned_job(&job_labels, &event.clone().metadata.name.unwrap()))
+        let is_already_scanned_job = event.name()
+            .map(|job_name| is_already_scanned_job(event.labels(), &job_name))
             .unwrap_or(true);
         if is_already_scanned_job { continue; }
 
-        if let Some(((job_name, job_status), job_spec)) = event.metadata.name.zip(event.status).zip(event.spec) {
-            if !is_successfully_completed_job(&job_status, &job_spec, &job_name) { continue; }
+        if let Some((job_name, job_status)) = event.name().zip(event.clone().status) {
+            if !is_successfully_completed_job(job_status) { continue; }
 
             let webhooks = get_webhooks_by_job_name(&job_name);
             if webhooks.is_empty() { continue; }
