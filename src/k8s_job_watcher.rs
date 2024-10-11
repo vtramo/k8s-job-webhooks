@@ -56,12 +56,18 @@ fn is_already_scanned_job(job_labels: &BTreeMap<String, String>, job_name: &str)
     is_already_scanned_job
 }
 
-fn is_successfully_completed_job(job_status: &JobStatus, job_spec: &JobSpec, job_name: &str) -> bool {
-    let succeeded = job_status.succeeded.unwrap_or(0);
-    let completion = job_spec.completions.unwrap_or(-1);
-    let completed_successfully = succeeded == completion;
-    println!("completed_successfully {}, job_name: {}", completed_successfully, job_name);
-    completed_successfully
+fn is_successfully_completed_job(job_status: JobStatus) -> bool {
+    let conditions = job_status.conditions;
+    println!("{:#?}", conditions);
+
+    const JOB_CONDITION_STATUS_TRUE: &'static str = "True";
+    const JOB_CONDITION_TYPE_COMPLETE: &'static str = "Complete";
+    conditions
+        .and_then(|job_conditions| job_conditions.last().cloned())
+        .map(|last_job_condition|
+            last_job_condition.status == JOB_CONDITION_STATUS_TRUE &&
+            last_job_condition.type_  == JOB_CONDITION_TYPE_COMPLETE)
+        .unwrap_or(false)
 }
 
 fn get_webhooks_by_job_name(job_name: &str) -> Vec<WebHook> {
