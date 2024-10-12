@@ -9,7 +9,7 @@ use kube::runtime::{watcher, WatchStreamExt};
 use kube::runtime::reflector::Lookup;
 
 use crate::models::WebHook;
-use crate::monitors;
+use crate::webhooks;
 
 const K8S_WEBHOOKS_CALLED_LABEL: &'static str = "app.k8s.job.monitor/webhooks-called";
 
@@ -31,7 +31,7 @@ pub async fn watch_jobs() {
             let webhooks = get_webhooks_by_job_name(&job_name);
             if webhooks.is_empty() { continue; }
 
-            monitors::call_webhooks(webhooks).await;
+            webhooks::call_webhooks(webhooks).await;
             println!("{:#?}", add_webhooks_called_label(&jobs, &job_name).await);
         }
     }
@@ -77,12 +77,12 @@ fn get_webhooks_by_job_name(job_name: &str) -> Vec<WebHook> {
     let mut webhooks: Vec<WebHook> = Vec::with_capacity(10);
     println!("Getting webhooks for jobname {}", job_name);
 
-    if let Some(job_webhooks) = monitors::get_webhooks_by_job(job_name) {
+    if let Some(job_webhooks) = webhooks::get_webhooks_by_job(job_name) {
         webhooks.extend(job_webhooks);
     }
 
     if let Some(job_name) = extract_cronjob_name_from_job_name(job_name)
-        .and_then(|name| monitors::get_webhooks_by_cronjob(&name)) {
+        .and_then(|name| webhooks::get_webhooks_by_cronjob(&name)) {
         webhooks.extend(job_name);
     }
 
