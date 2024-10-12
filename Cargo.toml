@@ -1,7 +1,15 @@
 [package]
-name = "k8s-cronjob-monitor"
+name = "k8s-job-webhooks"
+authors = ["Vincenzo Tramo <vv.tramo@gmail.com>"]
 version = "0.1.0"
 edition = "2021"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "z"
+panic = "abort"
+strip = "debuginfo"
 
 [dependencies]
 kube = { version = "0.96.0", features = ["runtime", "derive"] }
