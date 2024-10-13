@@ -1,7 +1,7 @@
 use actix_web::{App, HttpServer};
 
-use k8s_cronjob_monitor::controller;
-use k8s_cronjob_monitor::k8s_job_watcher;
+use k8s_job_webhooks::controller;
+use k8s_job_webhooks::service::k8s_job_watcher;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -9,8 +9,11 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(|| {
         App::new()
-            .service(controller::post_cronjobs_monitors)
-            .service(controller::post_jobs_monitors)
+            .service(controller::webhooks::post_webhooks)
+            .service(controller::webhooks::get_webhooks)
+            .service(controller::job_done_watchers::post_job_done_watchers)
+            .service(controller::job_done_watchers::get_job_done_watchers)
+            .service(controller::job_done_watchers::get_job_done_watcher)
     }).bind(("0.0.0.0", 8080))?
         .run()
         .await
