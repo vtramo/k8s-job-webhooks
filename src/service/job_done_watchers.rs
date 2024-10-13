@@ -34,7 +34,7 @@ pub async fn create_job_done_watcher(job_done_watcher: CreateJobDoneWatcherReque
     let job_done_watcher = JobDoneWatcher {
         id: Uuid::new_v4().to_string(),
         job_name: job_done_watcher.job_name.clone(),
-        timeout_seconds: 0,
+        timeout_seconds: job_done_watcher.timeout_seconds,
         job_done_trigger_webhooks,
         status: JobDoneWatcherStatus::Pending,
         created_at: Default::default(),
