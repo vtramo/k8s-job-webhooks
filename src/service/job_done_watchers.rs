@@ -80,7 +80,7 @@ pub fn is_job_watched(job_name: &str) -> bool {
 
 pub async fn notify_job_done_watchers(job_name: &str) {
     match ACTIVE_JOB_DONE_WATCHERS_IDS_BY_JOB_NAME.lock() {
-        Ok(active_job_done_watchers_ids_by_job_name) =>
+        Ok(mut active_job_done_watchers_ids_by_job_name) =>
             match active_job_done_watchers_ids_by_job_name.get(job_name) {
                 None => return,
                 Some(active_job_done_watchers_ids) => {
@@ -99,11 +99,8 @@ pub async fn notify_job_done_watchers(job_name: &str) {
                         let _ = call_webhook_task.await;
                     }
 
-                    match ACTIVE_JOB_DONE_WATCHERS_IDS_BY_JOB_NAME.lock() {
-                        Ok(mut active_job_done_watchers_ids_by_job_name) =>
-                            active_job_done_watchers_ids_by_job_name.remove(job_name.clone()),
-                        Err(_) => panic!(), // TODO:
-                    };
+
+                    active_job_done_watchers_ids_by_job_name.remove(job_name.clone());
                 },
             },
         Err(_) => panic!(), // TODO:
