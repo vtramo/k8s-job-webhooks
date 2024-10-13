@@ -88,13 +88,22 @@ pub async fn notify_job_done_watchers(job_name: &str) {
                         .iter()
                         .cloned()
                         .map(|active_job_done_watcher_id| {
-                            actix_web::rt::spawn(async move { call_job_done_trigger_webhooks(&active_job_done_watcher_id).await; })
+                            println!("spawn");
+                            actix_web::rt::spawn(async move {
+                                call_job_done_trigger_webhooks(&active_job_done_watcher_id).await;
+                            })
                         })
                         .collect();
 
                     for call_webhook_task in call_webhook_tasks {
                         let _ = call_webhook_task.await;
                     }
+
+                    match ACTIVE_JOB_DONE_WATCHERS_IDS_BY_JOB_NAME.lock() {
+                        Ok(mut active_job_done_watchers_ids_by_job_name) =>
+                            active_job_done_watchers_ids_by_job_name.remove(job_name.clone()),
+                        Err(_) => panic!(), // TODO:
+                    };
                 },
             },
         Err(_) => panic!(), // TODO:
@@ -145,8 +154,6 @@ async fn call_job_done_trigger_webhooks(job_watcher_id: &str) {
                         JobDoneWatcherStatus::PartiallyCompleted
                     }
                 );
-
-                job_done_watchers.remove(job_watcher_id);
             }
         }
         Err(_) => panic!(), // TODO:
