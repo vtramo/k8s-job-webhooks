@@ -84,18 +84,17 @@ pub async fn notify_job_done_watchers(job_name: &str) {
             match active_job_done_watchers_ids_by_job_name.get(job_name) {
                 None => return,
                 Some(active_job_done_watchers_ids) => {
-                    let call_webhook_tasks: Vec<_> = active_job_done_watchers_ids
+                    active_job_done_watchers_ids
                         .iter()
                         .cloned()
-                        .map(|active_job_done_watcher_id| {
+                        .for_each(|active_job_done_watcher_id| {
                             println!("spawn");
                             actix_web::rt::spawn(async move {
                                 call_job_done_trigger_webhooks(&active_job_done_watcher_id).await;
-                            })
-                        })
-                        .collect();
+                            });
+                        });
 
-                    active_job_done_watchers_ids_by_job_name.remove(job_name.clone());
+                    active_job_done_watchers_ids_by_job_name.remove(job_name);
                 },
             },
         Err(_) => panic!(), // TODO:
