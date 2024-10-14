@@ -10,7 +10,7 @@ use kube::runtime::reflector::Lookup;
 
 use crate::service;
 
-const K8S_WEBHOOKS_CALLED_LABEL: &'static str = "app.k8s.job.monitor/webhooks-called";
+const K8S_WEBHOOKS_CALLED_LABEL: &'static str = "app.k8s.job.webhooks/webhooks-called";
 
 pub async fn watch_jobs() {
     let client = Client::try_default().await.unwrap();
@@ -36,6 +36,7 @@ pub async fn watch_jobs() {
 
             println!("Job {:?} notify_job_done_watchers", job_name);
             service::job_done_watchers::notify_job_done_watchers(&job_name).await;
+            println!("Job {:?} notify_job_done_watchers exit", job_name);
 
             println!("{:#?}", add_webhooks_called_label(&jobs, &job_name).await);
         }
