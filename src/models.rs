@@ -133,5 +133,5 @@ fn is_zero(value: &u32) -> bool {
 }
 
 fn default_timeout_seconds() -> u32 {
-    30
+    0
 }
