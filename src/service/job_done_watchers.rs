@@ -95,11 +95,6 @@ pub async fn notify_job_done_watchers(job_name: &str) {
                         })
                         .collect();
 
-                    for call_webhook_task in call_webhook_tasks {
-                        let _ = call_webhook_task.await;
-                    }
-
-
                     active_job_done_watchers_ids_by_job_name.remove(job_name.clone());
                 },
             },
