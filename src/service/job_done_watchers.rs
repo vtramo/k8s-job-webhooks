@@ -114,26 +114,30 @@ async fn call_job_done_trigger_webhooks(job_watcher_id: &str) {
                 let mut tot_called_webhooks = 0;
                 let mut tot_failed_webhooks = 0;
                 for job_done_trigger_webhook in job_done_trigger_webhooks {
-                    let webhook = get_webhooks_by_id(&job_done_trigger_webhook.webhook_id)
-                        .await
-                        .expect("Should be present!");
+                    match get_webhooks_by_id(&job_done_trigger_webhook.webhook_id).await {
+                        Some(webhook) => {
+                            job_done_trigger_webhook.set_called_at(Utc::now());
+                            let post_result = http_client.post(webhook.url.to_string())
+                                .body(webhook.request_body)
+                                .send()
+                                .await;
 
-                    job_done_trigger_webhook.set_called_at(Utc::now());
-                    let post_result = http_client.post(webhook.url.to_string())
-                        .body(webhook.request_body)
-                        .send()
-                        .await;
-
-                    match post_result {
-                        Ok(_) => {
-                            job_done_trigger_webhook.set_status(JobDoneTriggerWebhookStatus::Called);
-                            tot_called_webhooks += 1;
+                            match post_result {
+                                Ok(_) => {
+                                    job_done_trigger_webhook.set_status(JobDoneTriggerWebhookStatus::Called);
+                                    tot_called_webhooks += 1;
+                                },
+                                Err(_) => {
+                                    job_done_trigger_webhook.set_status(JobDoneTriggerWebhookStatus::Failed);
+                                    tot_failed_webhooks += 1;
+                                }
+                            };
                         },
-                        Err(_) => {
-                            job_done_trigger_webhook.set_status(JobDoneTriggerWebhookStatus::Failed);
+                        None => {
+                            eprintln!("Webhook with id {} doesn't exist [Job Watcher {}", &job_done_trigger_webhook.webhook_id, job_watcher_id);
                             tot_failed_webhooks += 1;
                         }
-                    };
+                    }
                 }
 
                 job_done_watcher.set_status(
