@@ -1,0 +1,198 @@
+openapi: 3.0.3
+info:
+  title: Swagger Petstore - OpenAPI 3.0
+  termsOfService: http://swagger.io/terms/
+  contact:
+    email: apiteam@swagger.io
+  version: 0.1.0
+tags:
+  - name: Webhooks
+  - name: Job Done Watchers
+paths:
+  /webhooks:
+    post:
+      tags:
+        - Webhooks
+      summary: Create a Webhook
+      operationId: createWebhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Webhook'
+      responses:
+        '201':
+          description: Webhook created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Webhook'
+    get:
+      tags:
+        - Webhooks
+      summary: Get a list of Webhooks
+      operationId: getWebhooks
+      responses:
+        '200':
+          description: A list of Webhooks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Webhook'
+  /job-done-watchers:
+    post:
+      tags:
+        - Job Done Watchers
+      summary: Create a Job Done Watcher
+      operationId: createJobDoneWatcher
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: false
+          allowEmptyValue: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobDoneWatcher'
+      responses:
+        '201':
+          description: JobDoneWatcher created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobDoneWatcher'
+    get:
+      tags:
+        - Job Done Watchers
+      summary: Get a list of Job Done Watchers
+      operationId: getWebhookJobDoneWatchers
+      parameters:
+        - in: query
+          required: false
+          name: jobName
+          schema:
+            type: string
+        - in: query
+          required: false
+          name: status
+          schema:
+            $ref: '#/components/schemas/JobDoneWatcherStatus'
+      responses:
+        '200':
+          description: A list of Job Done Watchers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/JobDoneWatcher'
+  /job-done-watchers/{id}:
+    get:
+      tags:
+        - Job Done Watchers
+      summary: Get a Job Done Watcher
+      operationId: getJobDoneWatcher
+      parameters:
+        - in: path
+          required: true
+          name: id
+          schema:
+            type: string
+      responses:
+        '200':
+          description: A Job Done Watcher
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/JobDoneWatcher'
+
+components:
+  schemas:
+    Webhook:
+      type: object
+      properties:
+        id:
+          type: string
+          readOnly: true
+        description:
+          type: string
+        url:
+          type: string
+          format: url
+        requestBody:
+          type: string
+        createdAt:
+          type: string
+          readOnly: true
+          format: date-time
+
+    JobDoneWatcher:
+      type: object
+      properties:
+        id:
+          type: string
+          readOnly: true
+        jobName:
+          type: string
+        timeoutSeconds:
+          type: integer
+          default: 0
+        status:
+          $ref: '#/components/schemas/JobDoneWatcherStatus'
+        createdAt:
+          type: string
+          readOnly: true
+          format: date-time
+        jobDoneTriggerWebhooks:
+          type: array
+          items:
+            $ref: '#/components/schemas/JobDoneTriggerWebhook'
+
+    JobDoneWatcherStatus:
+      readOnly: true
+      type: string
+      enum:
+        - COMPLETED
+        - PARTIALLY_COMPLETED
+        - PENDING
+        - CANCELLED
+        - FAILED
+        - TIMEOUT
+
+    JobDoneTriggerWebhook:
+      type: object
+      properties:
+        id:
+          type: string
+          readOnly: true
+        webhookId:
+          type: string
+        timeoutSeconds:
+          type: integer
+          default: 0
+        status:
+          $ref: '#/components/schemas/JobDoneTriggerWebhookStatus'
+        calledAt:
+          type: string
+          readOnly: true
+          format: date-time
+
+    JobDoneTriggerWebhookStatus:
+      readOnly: true
+      type: string
+      enum:
+        - CALLED
+        - NOT_CALLED
+        - FAILED
+        - TIMEOUT
+        - CANCELLED
+
