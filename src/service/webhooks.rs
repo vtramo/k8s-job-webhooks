@@ -14,17 +14,17 @@ pub async fn create_webhook(webhook: CreateWebhookRequest) -> Webhook {
     };
 
     let webhook_repository = repository::get_webhook_repository();
-    webhook_repository.save(webhook.clone());
+    webhook_repository.save(webhook.clone()).await;
 
     webhook
 }
 
 pub async fn get_webhooks() -> Vec<Webhook> {
     let webhook_repository = repository::get_webhook_repository();
-    webhook_repository.find_all()
+    webhook_repository.find_all().await
 }
 
 pub async fn get_webhooks_by_id(webhook_id: &str) -> Option<Webhook> {
     let webhook_repository = repository::get_webhook_repository();
-    webhook_repository.find_by_id(webhook_id)
+    webhook_repository.find_by_id(webhook_id).await
 }

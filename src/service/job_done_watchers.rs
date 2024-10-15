@@ -36,7 +36,7 @@ pub async fn create_job_done_watcher(job_done_watcher: CreateJobDoneWatcherReque
     };
 
     let job_done_watcher_repository = repository::get_job_done_watcher_repository();
-    job_done_watcher_repository.save(job_done_watcher.clone());
+    job_done_watcher_repository.save(job_done_watcher.clone()).await;
 
     match ACTIVE_JOB_DONE_WATCHERS_IDS_BY_JOB_NAME.lock() {
         Ok(mut job_done_watchers_ids_by_job_name) =>
@@ -52,12 +52,12 @@ pub async fn create_job_done_watcher(job_done_watcher: CreateJobDoneWatcherReque
 
 pub async fn get_job_done_watchers() -> Vec<JobDoneWatcher> {
     let job_done_watcher_repository = repository::get_job_done_watcher_repository();
-    job_done_watcher_repository.find_all()
+    job_done_watcher_repository.find_all().await
 }
 
 pub async fn get_job_done_watcher_by_id(job_done_watcher_id: &str) -> Option<JobDoneWatcher> {
     let job_done_watcher_repository = repository::get_job_done_watcher_repository();
-    job_done_watcher_repository.find_by_id(job_done_watcher_id)
+    job_done_watcher_repository.find_by_id(job_done_watcher_id).await
 }
 
 pub fn is_job_watched(job_name: &str) -> bool {
@@ -92,7 +92,7 @@ pub async fn notify_job_done_watchers(job_name: &str) {
 
 async fn call_job_done_trigger_webhooks(job_watcher_id: &str) {
     let job_done_watcher_repository = repository::get_job_done_watcher_repository();
-    match job_done_watcher_repository.find_by_id(job_watcher_id) {
+    match job_done_watcher_repository.find_by_id(job_watcher_id).await {
         None => return,
         Some(mut job_done_watcher) => {
             let http_client = reqwest::Client::new();
@@ -139,7 +139,7 @@ async fn call_job_done_trigger_webhooks(job_watcher_id: &str) {
                 }
             );
 
-            job_done_watcher_repository.save(job_done_watcher);
+            job_done_watcher_repository.save(job_done_watcher).await;
         }
     };
 }

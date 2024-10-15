@@ -1,5 +1,5 @@
 use std::sync::{Arc, OnceLock};
-
+use async_trait::async_trait;
 use moka::sync::Cache;
 
 use crate::models::JobDoneWatcher;
@@ -21,20 +21,21 @@ impl InMemoryJobDoneWatcherRepository {
 
 impl JobDoneWatcherRepository for InMemoryJobDoneWatcherRepository {}
 
+#[async_trait]
 impl CrudRepository for InMemoryJobDoneWatcherRepository {
     type Entity = JobDoneWatcher;
 
-    fn find_all(&self) -> Vec<JobDoneWatcher> {
+    async fn find_all(&self) -> Vec<JobDoneWatcher> {
         self.job_done_watcher_by_id.iter()
             .map(|(_, webhook)| webhook)
             .collect()
     }
 
-    fn find_by_id(&self, id: &str) -> Option<JobDoneWatcher> {
+    async fn find_by_id(&self, id: &str) -> Option<JobDoneWatcher> {
         self.job_done_watcher_by_id.get(id)
     }
 
-    fn save(&self, webhook: JobDoneWatcher) {
+    async fn save(&self, webhook: JobDoneWatcher) {
         self.job_done_watcher_by_id.insert(webhook.id.clone(), webhook);
     }
 }
