@@ -23,4 +23,4 @@ openssl = { version = "0.10.66", features = ["vendored"] }
 chrono = "0.4.38"
 uuid = { version = "1.10.0", features = ["v4"] }
 url = "2.5.2"
-moka = "0.12.8"
+moka = { version = "0.12.8", features = ["sync"]}
