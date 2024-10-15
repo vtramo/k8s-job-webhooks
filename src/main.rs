@@ -2,10 +2,14 @@ use actix_web::{App, HttpServer, web};
 
 use k8s_job_webhooks::controller;
 use k8s_job_webhooks::controller::IdempotencyMap;
+use k8s_job_webhooks::repository;
 use k8s_job_webhooks::service::k8s_job_watcher;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    repository::set_webhook_repository(repository::InMemoryWebhookRepository::new());
+    repository::set_job_done_watcher_repository(repository::InMemoryJobDoneWatcherRepository::new());
+
     actix_web::rt::spawn(k8s_job_watcher::watch_jobs());
 
     let app_state_idempotency_map = web::Data::new(IdempotencyMap::new());
