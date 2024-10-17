@@ -24,7 +24,7 @@ pub async fn get_webhooks() -> Vec<Webhook> {
     webhook_repository.find_all().await
 }
 
-pub async fn get_webhooks_by_id(webhook_id: &str) -> Option<Webhook> {
+pub async fn get_webhook_by_id(webhook_id: &str) -> Option<Webhook> {
     let webhook_repository = repository::get_webhook_repository();
     webhook_repository.find_by_id(webhook_id).await
 }

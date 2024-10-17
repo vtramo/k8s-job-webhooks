@@ -5,7 +5,10 @@ use moka::sync::Cache;
 use crate::models::JobDoneWatcher;
 use crate::repository::CrudRepository;
 
-pub trait JobDoneWatcherRepository: CrudRepository<Entity = JobDoneWatcher> {}
+#[async_trait]
+pub trait JobDoneWatcherRepository: CrudRepository<Entity = JobDoneWatcher> {
+    async fn find_all_by_job_name(&self, job_name: &str) -> Vec<JobDoneWatcher>;
+}
 
 pub struct InMemoryJobDoneWatcherRepository {
     job_done_watcher_by_id: Cache<String, JobDoneWatcher>,
@@ -19,7 +22,16 @@ impl InMemoryJobDoneWatcherRepository {
     }
 }
 
-impl JobDoneWatcherRepository for InMemoryJobDoneWatcherRepository {}
+#[async_trait]
+impl JobDoneWatcherRepository for InMemoryJobDoneWatcherRepository {
+    async fn find_all_by_job_name(&self, job_name: &str) -> Vec<JobDoneWatcher> {
+        self.job_done_watcher_by_id.iter()
+            .filter(|(job_done_watcher_id, job_done_watcher)| {
+                job_done_watcher.job_name == job_name
+            }).map(|(_, job_done_watcher)| job_done_watcher)
+            .collect()
+    }
+}
 
 #[async_trait]
 impl CrudRepository for InMemoryJobDoneWatcherRepository {

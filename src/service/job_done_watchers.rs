@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
+use std::time::Duration;
 
 use chrono::Utc;
 use uuid::Uuid;
 
 use crate::models::{CreateJobDoneWatcherRequest, JobDoneTriggerWebhook, JobDoneTriggerWebhookStatus, JobDoneWatcher, JobDoneWatcherStatus};
-use crate::repository;
-use crate::service::webhooks::get_webhooks_by_id;
+use crate::{repository, service};
 
 pub static ACTIVE_JOB_DONE_WATCHERS_IDS_BY_JOB_NAME:
     LazyLock<Mutex<HashMap<String, Vec<String>>>> =
@@ -103,7 +103,7 @@ async fn call_job_done_trigger_webhooks(job_watcher_id: &str) {
             let mut tot_called_webhooks = 0;
             let mut tot_failed_webhooks = 0;
             for job_done_trigger_webhook in job_done_trigger_webhooks {
-                match get_webhooks_by_id(&job_done_trigger_webhook.webhook_id).await {
+                match service::webhooks::get_webhook_by_id(&job_done_trigger_webhook.webhook_id).await {
                     Some(webhook) => {
                         job_done_trigger_webhook.set_called_at(Utc::now());
                         let post_result = http_client.post(webhook.url.to_string())
