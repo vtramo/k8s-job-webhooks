@@ -44,7 +44,7 @@ impl JobDoneTriggerWebhook {
     }
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, Copy)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum JobDoneTriggerWebhookStatus {
     Called,
@@ -89,8 +89,9 @@ impl JobDoneWatcher {
     }
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, Copy)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(PartialEq)]
 pub enum JobDoneWatcherStatus {
     Completed,
     PartiallyCompleted,

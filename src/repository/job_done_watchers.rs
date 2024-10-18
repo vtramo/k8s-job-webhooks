@@ -7,12 +7,12 @@ use futures_util::stream;
 use futures_util::StreamExt;
 use moka::sync::Cache;
 
-use crate::models::JobDoneWatcher;
+use crate::models::{JobDoneWatcher, JobDoneWatcherStatus};
 use crate::repository::{AsyncLockGuard, CrudRepository};
 
 #[async_trait]
 pub trait JobDoneWatcherRepository: CrudRepository<Entity = JobDoneWatcher> + AsyncLockGuard<JobDoneWatcher> {
-    async fn find_all_by_job_name(&self, job_name: &str) -> Vec<JobDoneWatcher>;
+    async fn find_all_by_job_name_and_status(&self, job_name: &str, status: JobDoneWatcherStatus) -> Vec<JobDoneWatcher>;
 }
 
 pub struct InMemoryJobDoneWatcherRepository {
@@ -38,13 +38,13 @@ impl AsyncLockGuard<JobDoneWatcher> for InMemoryJobDoneWatcherRepository {
 
 #[async_trait]
 impl JobDoneWatcherRepository for InMemoryJobDoneWatcherRepository {
-    async fn find_all_by_job_name(&self, job_name: &str) -> Vec<JobDoneWatcher> {
+    async fn find_all_by_job_name_and_status(&self, job_name: &str, status: JobDoneWatcherStatus) -> Vec<JobDoneWatcher> {
         stream::iter(self.job_done_watcher_by_id.iter())
             .filter_map(|(_, job_done_watcher): (_, Arc<RwLock<JobDoneWatcher>>)| {
                 let job_done_watcher = Arc::clone(&job_done_watcher);
                 async move {
                     let job_done_watcher = job_done_watcher.read().await;
-                    if &job_done_watcher.job_name == job_name {
+                    if &job_done_watcher.job_name == job_name && job_done_watcher.status == status {
                         Some(job_done_watcher.clone())
                     } else {
                         None

@@ -20,25 +20,17 @@ pub async fn watch_jobs() {
 
     while let Some(job) = stream.try_next().await.unwrap() {
         if is_already_scanned_job(job.labels()) {
-            println!("Job {:?} already scanned.", job.name());
             continue;
         }
 
         if let Some((job_name, job_status)) = job.name().zip(job.clone().status) {
-            if !service::job_done_watchers::is_job_watched(&job_name) {
-                println!("Job {:?} !is_job_watched", job_name);
-                continue;
-            }
             if !is_successfully_completed_job(job_status) {
-                println!("Job {:?} !is_successfully_completed_job", job_name);
                 continue;
             }
 
-            println!("Job {:?} notify_job_done_watchers", job_name);
             service::job_done_watchers::notify_job_done_watchers(&job_name).await;
-            println!("Job {:?} notify_job_done_watchers exit", job_name);
 
-            println!("{:#?}", add_webhooks_called_label(&jobs, &job_name).await);
+            add_webhooks_called_label(&jobs, &job_name).await; // TODO:
         }
     }
 }
@@ -51,7 +43,6 @@ fn is_already_scanned_job(job_labels: &BTreeMap<String, String>) -> bool {
 
 fn is_successfully_completed_job(job_status: JobStatus) -> bool {
     let conditions = job_status.conditions;
-    println!("{:#?}", conditions);
 
     const JOB_CONDITION_STATUS_TRUE: &'static str = "True";
     const JOB_CONDITION_TYPE_COMPLETE: &'static str = "Complete";
