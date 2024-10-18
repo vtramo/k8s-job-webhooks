@@ -1,3 +1,4 @@
+use std::future::Future;
 use async_trait::async_trait;
 pub use webhooks::get_webhook_repository;
 pub use webhooks::set_webhook_repository;
@@ -17,4 +18,9 @@ pub trait CrudRepository: Send + Sync {
     async fn find_all(&self) -> Vec<Self::Entity>;
     async fn find_by_id(&self, id: &str) -> Option<Self::Entity>;
     async fn save(&self, entity: Self::Entity);
+}
+
+#[async_trait::async_trait]
+pub trait AsyncLockGuard<T> {
+    async fn lock(&self, id: &str, critical_section: Box<dyn FnOnce(T) -> Box<dyn Future<Output=()> + Send> + Send>);
 }
