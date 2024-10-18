@@ -1,12 +1,17 @@
+use std::future::Future;
 use std::sync::{Arc, OnceLock};
+
+use async_rwlock::RwLock;
 use async_trait::async_trait;
+use futures_util::stream;
+use futures_util::StreamExt;
 use moka::sync::Cache;
 
 use crate::models::JobDoneWatcher;
-use crate::repository::CrudRepository;
+use crate::repository::{AsyncLockGuard, CrudRepository};
 
 #[async_trait]
-pub trait JobDoneWatcherRepository: CrudRepository<Entity = JobDoneWatcher> {
+pub trait JobDoneWatcherRepository: CrudRepository<Entity = JobDoneWatcher> + AsyncLockGuard<JobDoneWatcher> {
     async fn find_all_by_job_name(&self, job_name: &str) -> Vec<JobDoneWatcher>;
 }
 
@@ -22,14 +27,12 @@ impl InMemoryJobDoneWatcherRepository {
     }
 }
 
-#[async_trait]
-impl JobDoneWatcherRepository for InMemoryJobDoneWatcherRepository {
-    async fn find_all_by_job_name(&self, job_name: &str) -> Vec<JobDoneWatcher> {
-        self.job_done_watcher_by_id.iter()
-            .filter(|(job_done_watcher_id, job_done_watcher)| {
-                job_done_watcher.job_name == job_name
-            }).map(|(_, job_done_watcher)| job_done_watcher)
-            .collect()
+#[async_trait::async_trait]
+impl AsyncLockGuard<JobDoneWatcher> for InMemoryJobDoneWatcherRepository {
+    async fn lock(&self, id: &str, critical_section: Box<dyn FnOnce(JobDoneWatcher) -> Box<dyn Future<Output=()> + Send> + Send>) {
+        let job_done_watcher = self.job_done_watcher_by_id.get(id).unwrap();
+        let job_done_watcher = job_done_watcher.write().await;
+        Box::into_pin(critical_section(job_done_watcher.clone())).await;
     }
 }
 
