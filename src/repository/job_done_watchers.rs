@@ -34,6 +34,26 @@ impl JobDoneWatcherRepository for InMemoryJobDoneWatcherRepository {
 }
 
 #[async_trait]
+impl JobDoneWatcherRepository for InMemoryJobDoneWatcherRepository {
+    async fn find_all_by_job_name(&self, job_name: &str) -> Vec<JobDoneWatcher> {
+        stream::iter(self.job_done_watcher_by_id.iter())
+            .filter_map(|(_, job_done_watcher): (_, Arc<RwLock<JobDoneWatcher>>)| {
+                let job_done_watcher = Arc::clone(&job_done_watcher);
+                async move {
+                    let job_done_watcher = job_done_watcher.read().await;
+                    if &job_done_watcher.job_name == job_name {
+                        Some(job_done_watcher.clone())
+                    } else {
+                        None
+                    }
+                }
+            })
+            .collect::<Vec<_>>()
+            .await
+    }
+}
+
+#[async_trait]
 impl CrudRepository for InMemoryJobDoneWatcherRepository {
     type Entity = JobDoneWatcher;
 
