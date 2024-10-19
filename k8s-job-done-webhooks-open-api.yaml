@@ -1,10 +1,8 @@
 openapi: 3.0.3
 info:
-  title: Swagger Petstore - OpenAPI 3.0
-  termsOfService: http://swagger.io/terms/
+  title: K8S Job Webhooks REST API
   contact:
-    email: apiteam@swagger.io
-  version: 0.1.0
+    email: vv.tramo@gmail.com
 tags:
   - name: Webhooks
   - name: Job Done Watchers
