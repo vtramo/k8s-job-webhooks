@@ -106,8 +106,13 @@ async fn process_job_done_watcher(job_done_watcher_id: &str) {
     let job_done_watcher_repository = repository::get_job_done_watcher_repository();
 
     job_done_watcher_repository.lock(job_done_watcher_id,
-        Box::new(|job_done_watcher|
-            Box::new(call_job_done_trigger_webhooks(job_done_watcher))))
+        Box::new(|job_done_watcher| {
+            if job_done_watcher.status == JobDoneWatcherStatus::Pending {
+                Box::new(call_job_done_trigger_webhooks(job_done_watcher))
+            } else {
+                Box::new(async {})
+            }
+        }))
         .await;
 }
 
