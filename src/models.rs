@@ -1,8 +1,11 @@
+pub mod entity;
+
 use std::fmt::Display;
 
 use chrono::{DateTime, Utc};
 use k8s_openapi::serde::Deserialize;
 use serde::{Deserializer, Serialize, Serializer};
+use crate::models::entity::WebhookEntity;
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -20,6 +23,18 @@ pub struct Webhook {
     pub request_body: String,
     pub description: String,
     pub created_at: DateTime<Utc>,
+}
+
+impl From<&WebhookEntity> for Webhook {
+    fn from(webhook_entity: &WebhookEntity) -> Self {
+        Self {
+            id: webhook_entity.id.clone(),
+            url: Url(url::Url::parse(&webhook_entity.url).expect("url should be correct!")),
+            request_body: webhook_entity.request_body.clone(),
+            description: webhook_entity.description.clone(),
+            created_at: webhook_entity.created_at.and_utc(),
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
