@@ -14,7 +14,7 @@ pub async fn create_webhook(webhook: CreateWebhookRequest) -> anyhow::Result<Web
     };
 
     let webhook_repository = repository::get_webhook_repository();
-    match webhook_repository.save(webhook.clone()).await {
+    match webhook_repository.create_webhook(webhook.clone()).await {
         Ok(()) => Ok(webhook),
         Err(error) => Err(error)
     }
@@ -22,10 +22,10 @@ pub async fn create_webhook(webhook: CreateWebhookRequest) -> anyhow::Result<Web
 
 pub async fn get_webhooks() -> anyhow::Result<Vec<Webhook>> {
     let webhook_repository = repository::get_webhook_repository();
-    webhook_repository.find_all().await
+    webhook_repository.find_all_webhooks().await
 }
 
 pub async fn get_webhook_by_id(webhook_id: &Uuid) -> anyhow::Result<Option<Webhook>> {
     let webhook_repository = repository::get_webhook_repository();
-    webhook_repository.find_by_id(webhook_id).await
+    webhook_repository.find_webhook_by_id(webhook_id).await
 }

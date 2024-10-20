@@ -11,9 +11,9 @@ use crate::repository::{SqliteDatabase, SqlxAcquire};
 
 #[async_trait]
 pub trait WebhookRepository: Send + Sync {
-    async fn find_all(&self) -> anyhow::Result<Vec<Webhook>>;
-    async fn find_by_id(&self, uuid: &Uuid) -> anyhow::Result<Option<Webhook>>;
-    async fn save(&self, entity: Webhook) -> anyhow::Result<()>;
+    async fn find_all_webhooks(&self) -> anyhow::Result<Vec<Webhook>>;
+    async fn find_webhook_by_id(&self, uuid: &Uuid) -> anyhow::Result<Option<Webhook>>;
+    async fn create_webhook(&self, entity: Webhook) -> anyhow::Result<()>;
 }
 
 pub static WEBHOOK_REPOSITORY: OnceLock<Arc<dyn WebhookRepository>> = OnceLock::new();
@@ -42,24 +42,24 @@ impl InMemoryWebhookRepository {
 
 #[async_trait]
 impl WebhookRepository for InMemoryWebhookRepository {
-    async fn find_all(&self) -> anyhow::Result<Vec<Webhook>> {
+    async fn find_all_webhooks(&self) -> anyhow::Result<Vec<Webhook>> {
         Ok(self.webhook_by_id.iter()
             .map(|(_, webhook)| webhook)
             .collect())
     }
 
-    async fn find_by_id(&self, uuid: &Uuid) -> anyhow::Result<Option<Webhook>> {
+    async fn find_webhook_by_id(&self, uuid: &Uuid) -> anyhow::Result<Option<Webhook>> {
         Ok(self.webhook_by_id.get(&uuid.to_string()))
     }
 
-    async fn save(&self, webhook: Webhook) -> anyhow::Result<()> {
+    async fn create_webhook(&self, webhook: Webhook) -> anyhow::Result<()> {
         Ok(self.webhook_by_id.insert(webhook.id.clone(), webhook))
     }
 }
 
 #[async_trait]
 impl WebhookRepository for SqliteDatabase {
-    async fn find_all(&self) -> anyhow::Result<Vec<Webhook>> {
+    async fn find_all_webhooks(&self) -> anyhow::Result<Vec<Webhook>> {
         let mut conn = self.acquire()
             .await
             .with_context(|| "Unable to acquire a database connection".to_string())?;
@@ -71,7 +71,7 @@ impl WebhookRepository for SqliteDatabase {
         Ok(webhook_entities.iter().map(Webhook::from).collect())
     }
 
-    async fn find_by_id(&self, uuid: &Uuid) -> anyhow::Result<Option<Webhook>> {
+    async fn find_webhook_by_id(&self, uuid: &Uuid) -> anyhow::Result<Option<Webhook>> {
         let mut conn = self.acquire()
             .await
             .with_context(|| "Unable to acquire a database connection".to_string())?;
@@ -83,7 +83,7 @@ impl WebhookRepository for SqliteDatabase {
             .map(Webhook::from))
     }
 
-    async fn save(&self, webhook: Webhook) -> anyhow::Result<()> {
+    async fn create_webhook(&self, webhook: Webhook) -> anyhow::Result<()> {
         let mut conn = self.acquire().await?;
 
         let now = chrono::Utc::now();

@@ -43,7 +43,7 @@ pub async fn create_job_done_watcher(job_done_watcher: CreateJobDoneWatcherReque
     }
 
     let job_done_watcher_repository = repository::get_job_done_watcher_repository();
-    job_done_watcher_repository.save(job_done_watcher.clone()).await;
+    job_done_watcher_repository.create_watcher(job_done_watcher.clone()).await;
 
     job_done_watcher
 }
@@ -65,7 +65,7 @@ fn start_timer_job_done_watcher(job_done_watcher_id: &str, timeout_secs: u64) {
                       .for_each(|job_done_trigger_webhook|
                           job_done_trigger_webhook.status = JobDoneTriggerWebhookStatus::Timeout);
                   let job_done_watcher_repository = repository::get_job_done_watcher_repository();
-                  job_done_watcher_repository.save(job_done_watcher).await;
+                  job_done_watcher_repository.create_watcher(job_done_watcher).await;
               }
 
               Ok(())
@@ -81,12 +81,12 @@ fn start_timer_job_done_watcher(job_done_watcher_id: &str, timeout_secs: u64) {
 
 pub async fn get_job_done_watchers() -> Vec<JobDoneWatcher> {
     let job_done_watcher_repository = repository::get_job_done_watcher_repository();
-    job_done_watcher_repository.find_all().await
+    job_done_watcher_repository.find_all_watchers().await
 }
 
 pub async fn get_job_done_watcher_by_id(job_done_watcher_id: &str) -> Option<JobDoneWatcher> {
     let job_done_watcher_repository = repository::get_job_done_watcher_repository();
-    job_done_watcher_repository.find_by_id(job_done_watcher_id).await
+    job_done_watcher_repository.find_watcher_by_id(job_done_watcher_id).await
 }
 
 pub async fn notify_job_done_watchers(job_name: &str) {
@@ -113,7 +113,7 @@ pub async fn notify_job_done_watchers(job_name: &str) {
 async fn find_pending_job_done_watchers(job_name: &str) -> Vec<JobDoneWatcher> {
     let job_done_watcher_repository = repository::get_job_done_watcher_repository();
 
-    job_done_watcher_repository.find_all_by_job_name_and_status(
+    job_done_watcher_repository.find_all_watchers_by_job_name_and_status(
         job_name,
         JobDoneWatcherStatus::Pending).await
 }
@@ -166,7 +166,7 @@ async fn call_job_done_trigger_webhooks(mut job_done_watcher: JobDoneWatcher) ->
     job_done_watcher.set_status(job_done_watcher_status);
 
     let job_done_watcher_repository = repository::get_job_done_watcher_repository();
-    job_done_watcher_repository.save(job_done_watcher).await;
+    job_done_watcher_repository.create_watcher(job_done_watcher).await;
 
     Ok(())
 }

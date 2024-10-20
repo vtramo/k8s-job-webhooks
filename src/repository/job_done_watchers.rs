@@ -12,10 +12,10 @@ use crate::repository::AsyncLockGuard;
 
 #[async_trait]
 pub trait JobDoneWatcherRepository: AsyncLockGuard<JobDoneWatcher> + Send + Sync {
-    async fn find_all_by_job_name_and_status(&self, job_name: &str, status: JobDoneWatcherStatus) -> Vec<JobDoneWatcher>;
-    async fn find_all(&self) -> Vec<JobDoneWatcher>;
-    async fn find_by_id(&self, id: &str) -> Option<JobDoneWatcher>;
-    async fn save(&self, job_done_watcher: JobDoneWatcher);
+    async fn find_all_watchers_by_job_name_and_status(&self, job_name: &str, status: JobDoneWatcherStatus) -> Vec<JobDoneWatcher>;
+    async fn find_all_watchers(&self) -> Vec<JobDoneWatcher>;
+    async fn find_watcher_by_id(&self, id: &str) -> Option<JobDoneWatcher>;
+    async fn create_watcher(&self, job_done_watcher: JobDoneWatcher);
 }
 
 pub struct InMemoryJobDoneWatcherRepository {
@@ -41,7 +41,7 @@ impl AsyncLockGuard<JobDoneWatcher> for InMemoryJobDoneWatcherRepository {
 
 #[async_trait]
 impl JobDoneWatcherRepository for InMemoryJobDoneWatcherRepository {
-    async fn find_all_by_job_name_and_status(&self, job_name: &str, status: JobDoneWatcherStatus) -> Vec<JobDoneWatcher> {
+    async fn find_all_watchers_by_job_name_and_status(&self, job_name: &str, status: JobDoneWatcherStatus) -> Vec<JobDoneWatcher> {
         stream::iter(self.job_done_watcher_by_id.iter())
             .filter_map(|(_, job_done_watcher): (_, Arc<RwLock<JobDoneWatcher>>)| {
                 let job_done_watcher = Arc::clone(&job_done_watcher);
@@ -58,7 +58,7 @@ impl JobDoneWatcherRepository for InMemoryJobDoneWatcherRepository {
             .await
     }
 
-    async fn find_all(&self) -> Vec<JobDoneWatcher> {
+    async fn find_all_watchers(&self) -> Vec<JobDoneWatcher> {
         stream::iter(self.job_done_watcher_by_id.iter())
             .then(|(_, job_done_watcher)| {
                 let job_done_watcher = Arc::clone(&job_done_watcher);
@@ -68,13 +68,13 @@ impl JobDoneWatcherRepository for InMemoryJobDoneWatcherRepository {
             .await
     }
 
-    async fn find_by_id(&self, id: &str) -> Option<JobDoneWatcher> {
+    async fn find_watcher_by_id(&self, id: &str) -> Option<JobDoneWatcher> {
         let job_done_watcher = Arc::clone(&self.job_done_watcher_by_id.get(id)?);
         let job_done_watcher = job_done_watcher.read().await;
         Some(job_done_watcher.clone())
     }
 
-    async fn save(&self, job_done_watcher: JobDoneWatcher) {
+    async fn create_watcher(&self, job_done_watcher: JobDoneWatcher) {
         println!("Saving {:#?}", job_done_watcher);
         self.job_done_watcher_by_id.insert(job_done_watcher.id.clone(), Arc::new(RwLock::new(job_done_watcher)));
     }
