@@ -2,14 +2,16 @@ use std::sync::{Arc, OnceLock};
 
 use async_trait::async_trait;
 use moka::sync::Cache;
+use uuid::Uuid;
 
+use crate::models::entity::WebhookEntity;
 use crate::models::Webhook;
 use crate::repository::{SqliteDatabase, SqlxAcquire};
 
 #[async_trait]
 pub trait WebhookRepository: Send + Sync {
     async fn find_all(&self) -> anyhow::Result<Vec<Webhook>>;
-    async fn find_by_id(&self, id: &str) -> anyhow::Result<Option<Webhook>>;
+    async fn find_by_id(&self, uuid: &Uuid) -> anyhow::Result<Option<Webhook>>;
     async fn save(&self, entity: Webhook) -> anyhow::Result<()>;
 }
 
@@ -45,8 +47,8 @@ impl WebhookRepository for InMemoryWebhookRepository {
             .collect())
     }
 
-    async fn find_by_id(&self, id: &str) -> anyhow::Result<Option<Webhook>> {
-        Ok(self.webhook_by_id.get(id))
+    async fn find_by_id(&self, uuid: &Uuid) -> anyhow::Result<Option<Webhook>> {
+        Ok(self.webhook_by_id.get(&uuid.to_string()))
     }
 
     async fn save(&self, webhook: Webhook) -> anyhow::Result<()> {
@@ -58,10 +60,15 @@ impl WebhookRepository for InMemoryWebhookRepository {
 impl WebhookRepository for SqliteDatabase {
     async fn find_all(&self) -> anyhow::Result<Vec<Webhook>> {
         let mut conn = self.acquire().await?;
-        sqlx::query_as!(Webhook, "SELECT * FROM webhooks")
+
+        let webhook_entities: Vec<WebhookEntity> = sqlx::query_as!(WebhookEntity, "SELECT * FROM webhooks")
+            .fetch_all(&mut *conn)
+            .await?;
+
+        Ok(webhook_entities.iter().map(Webhook::from).collect())
     }
 
-    async fn find_by_id(&self, id: &str) -> anyhow::Result<Option<Webhook>> {
+    async fn find_by_id(&self, uuid: &Uuid) -> anyhow::Result<Option<Webhook>> {
         todo!()
     }
 

@@ -172,8 +172,8 @@ async fn call_job_done_trigger_webhooks(mut job_done_watcher: JobDoneWatcher) ->
 }
 
 async fn call_job_done_trigger_webhook(job_done_trigger_webhook: &mut JobDoneTriggerWebhook) -> anyhow::Result<bool> {
-    let webhook_id = job_done_trigger_webhook.webhook_id.clone();
-    match service::webhooks::get_webhooks_by_id(&webhook_id).await? {
+    let webhook_id = Uuid::parse_str(&job_done_trigger_webhook.webhook_id).expect("uuid should be correct!");
+    match service::webhooks::get_webhook_by_id(&webhook_id).await? {
         Some(webhook) => {
             job_done_trigger_webhook.set_called_at(Utc::now());
             let http_client = Client::new();

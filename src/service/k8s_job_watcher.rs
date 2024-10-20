@@ -30,7 +30,7 @@ pub async fn watch_jobs() {
 
             service::job_done_watchers::notify_job_done_watchers(&job_name).await;
 
-            add_webhooks_called_label(&jobs, &job_name).await; // TODO:
+            let _ = add_webhooks_called_label(&jobs, &job_name).await; // TODO:
         }
     }
 }
