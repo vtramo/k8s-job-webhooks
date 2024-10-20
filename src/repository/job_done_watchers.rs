@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use futures_util::stream;
 use futures_util::StreamExt;
 use moka::sync::Cache;
+use uuid::Uuid;
 
 use crate::models::{JobDoneWatcher, JobDoneWatcherStatus};
 use crate::models::entity::JobDoneWatcherEntity;
@@ -20,7 +21,7 @@ pub trait JobDoneWatcherRepository: AsyncLockGuard<JobDoneWatcher> + Send + Sync
         status: JobDoneWatcherStatus
     ) -> anyhow::Result<Vec<JobDoneWatcher>>;
     async fn find_all_watchers(&self) -> anyhow::Result<Vec<JobDoneWatcher>>;
-    async fn find_watcher_by_id(&self, id: &str) -> anyhow::Result<Option<JobDoneWatcher>>;
+    async fn find_watcher_by_id(&self, id: &Uuid) -> anyhow::Result<Option<JobDoneWatcher>>;
     async fn create_watcher(&self, job_done_watcher: &JobDoneWatcher) -> anyhow::Result<()>;
 }
 
@@ -50,8 +51,8 @@ impl InMemoryJobDoneWatcherRepository {
 
 #[async_trait::async_trait]
 impl AsyncLockGuard<JobDoneWatcher> for InMemoryJobDoneWatcherRepository {
-    async fn lock(&self, id: &str, critical_section: Box<dyn FnOnce(JobDoneWatcher) -> Box<dyn Future<Output=anyhow::Result<()>> + Send> + Send>) -> anyhow::Result<()> {
-        let job_done_watcher = self.job_done_watcher_by_id.get(id).unwrap();
+    async fn lock(&self, id: &Uuid, critical_section: Box<dyn FnOnce(JobDoneWatcher) -> Box<dyn Future<Output=anyhow::Result<()>> + Send> + Send>) -> anyhow::Result<()> {
+        let job_done_watcher = self.job_done_watcher_by_id.get(&id.to_string()).unwrap();
         let job_done_watcher = job_done_watcher.write().await;
         Box::into_pin(critical_section(job_done_watcher.clone())).await
     }
@@ -90,8 +91,8 @@ impl JobDoneWatcherRepository for InMemoryJobDoneWatcherRepository {
             .await)
     }
 
-    async fn find_watcher_by_id(&self, id: &str) -> anyhow::Result<Option<JobDoneWatcher>> {
-        if let Some(job_done_watcher) = self.job_done_watcher_by_id.get(id) {
+    async fn find_watcher_by_id(&self, id: &Uuid) -> anyhow::Result<Option<JobDoneWatcher>> {
+        if let Some(job_done_watcher) = self.job_done_watcher_by_id.get(&id.to_string()) {
             let job_done_watcher = Arc::clone(&job_done_watcher);
             let job_done_watcher = job_done_watcher.read().await;
             Ok(Some(job_done_watcher.clone()))
@@ -102,14 +103,14 @@ impl JobDoneWatcherRepository for InMemoryJobDoneWatcherRepository {
 
     async fn create_watcher(&self, job_done_watcher: &JobDoneWatcher) -> anyhow::Result<()> {
         println!("Saving {:#?}", job_done_watcher);
-        self.job_done_watcher_by_id.insert(job_done_watcher.id.clone(), Arc::new(RwLock::new(job_done_watcher.clone())));
+        self.job_done_watcher_by_id.insert(job_done_watcher.id.to_string(), Arc::new(RwLock::new(job_done_watcher.clone())));
         Ok(())
     }
 }
 
 #[async_trait::async_trait]
 impl AsyncLockGuard<JobDoneWatcher> for SqliteDatabase {
-    async fn lock(&self, id: &str, critical_section: Box<dyn FnOnce(JobDoneWatcher) -> Box<dyn Future<Output=anyhow::Result<()>> + Send> + Send>) -> anyhow::Result<()> {
+    async fn lock(&self, id: &Uuid, critical_section: Box<dyn FnOnce(JobDoneWatcher) -> Box<dyn Future<Output=anyhow::Result<()>> + Send> + Send>) -> anyhow::Result<()> {
         todo!()
     }
 }
@@ -156,6 +157,7 @@ impl JobDoneWatcherRepository for SqliteDatabase {
 
     async fn find_watcher_by_id(&self, id: &str) -> anyhow::Result<Option<JobDoneWatcher>> {
         todo!()
+    async fn find_watcher_by_id(&self, id: &Uuid) -> anyhow::Result<Option<JobDoneWatcher>> {
     }
 
     async fn create_watcher(&self, job_done_watcher: &JobDoneWatcher) -> anyhow::Result<()> {

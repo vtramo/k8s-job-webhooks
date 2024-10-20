@@ -1,4 +1,5 @@
 use actix_web::{get, HttpRequest, HttpResponse, post, Responder, web};
+use uuid::Uuid;
 
 use crate::controller::{IDEMPOTENCY_KEY_HEADER, IdempotencyMap};
 use crate::models::CreateJobDoneWatcherRequest;
@@ -32,13 +33,11 @@ async fn post_job_done_watchers(
     HttpResponse::Created().json(created_job_done_watcher)
 }
 
-fn extract_idempotency_key_header_value(http_request: &HttpRequest) -> Option<String> {
+fn extract_idempotency_key_header_value(http_request: &HttpRequest) -> Option<Uuid> {
     http_request.headers()
         .get(IDEMPOTENCY_KEY_HEADER)
-        .and_then(|header_value|
-            header_value.to_str()
-                .ok()
-                .map(|s| s.to_string()))
+        .and_then(|header_value| header_value.to_str().ok())
+        .and_then(|s| Uuid::parse_str(s).ok())
 }
 
 
@@ -54,7 +53,12 @@ async fn get_job_done_watchers() -> impl Responder {
 
 #[get("/job-done-watchers/{id}")]
 async fn get_job_done_watcher(id: web::Path<String>) -> impl Responder {
-    match service::job_done_watchers::get_job_done_watcher_by_id(id.as_str()).await {
+    let id = match Uuid::parse_str(id.as_str()) {
+        Ok(id) => id,
+        Err(_) => return HttpResponse::BadRequest().finish(),
+    };
+
+    match service::job_done_watchers::get_job_done_watcher_by_id(&id).await {
         Ok(None) => HttpResponse::NotFound().finish(),
         Ok(Some(job_done_watcher)) => HttpResponse::Ok().json(job_done_watcher),
         _ => return HttpResponse::InternalServerError().finish(),

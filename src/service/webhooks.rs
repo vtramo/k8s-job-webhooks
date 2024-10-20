@@ -6,7 +6,7 @@ use crate::repository;
 
 pub async fn create_webhook(webhook: CreateWebhookRequest) -> anyhow::Result<Webhook> {
     let webhook = Webhook {
-        id: Uuid::new_v4().to_string(),
+        id: Uuid::new_v4(),
         url: webhook.url,
         request_body: webhook.request_body,
         description: webhook.description,

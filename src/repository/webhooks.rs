@@ -53,7 +53,7 @@ impl WebhookRepository for InMemoryWebhookRepository {
     }
 
     async fn create_webhook(&self, webhook: &Webhook) -> anyhow::Result<()> {
-        Ok(self.webhook_by_id.insert(webhook.id.clone(), webhook.clone()))
+        Ok(self.webhook_by_id.insert(webhook.id.to_string(), webhook.clone()))
     }
 }
 
@@ -87,7 +87,7 @@ impl WebhookRepository for SqliteDatabase {
         let mut conn = self.acquire().await?;
 
         let now = chrono::Utc::now();
-        let webhook_id = webhook.id.clone();
+        let webhook_id = webhook.id.to_string();
         let webhook_url = webhook.url.to_string();
         let webhook_request_body = webhook.request_body.clone();
         let webhook_description = webhook.description.clone();

@@ -3,6 +3,7 @@ use std::fmt::Display;
 use chrono::{DateTime, Utc};
 use k8s_openapi::serde::Deserialize;
 use serde::{Deserializer, Serialize, Serializer};
+use uuid::Uuid;
 
 use crate::models::entity::{JobDoneTriggerWebhookEntity, JobDoneTriggerWebhookStatusEntity, JobDoneWatcherEntity, JobDoneWatcherStatusEntity, WebhookEntity};
 
@@ -19,7 +20,7 @@ pub struct CreateWebhookRequest {
 #[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Webhook {
-    pub id: String,
+    pub id: Uuid,
     pub url: Url,
     pub request_body: String,
     pub description: String,
@@ -29,7 +30,7 @@ pub struct Webhook {
 impl From<&WebhookEntity> for Webhook {
     fn from(webhook_entity: &WebhookEntity) -> Self {
         Self {
-            id: webhook_entity.id.clone(),
+            id: Uuid::parse_str(&webhook_entity.id).expect("Uuid from db should be correct!"),
             url: Url(url::Url::parse(&webhook_entity.url).expect("url should be correct!")),
             request_body: webhook_entity.request_body.clone(),
             description: webhook_entity.description.clone(),
@@ -41,7 +42,7 @@ impl From<&WebhookEntity> for Webhook {
 impl From<WebhookEntity> for Webhook {
     fn from(webhook_entity: WebhookEntity) -> Self {
         Self {
-            id: webhook_entity.id,
+            id: Uuid::parse_str(&webhook_entity.id).expect("Uuid from db should be correct!"),
             url: Url(url::Url::parse(&webhook_entity.url).expect("url should be correct!")),
             request_body: webhook_entity.request_body,
             description: webhook_entity.description,
@@ -53,8 +54,8 @@ impl From<WebhookEntity> for Webhook {
 #[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct JobDoneTriggerWebhook {
-    pub id: String,
-    pub webhook_id: String,
+    pub id: Uuid,
+    pub webhook_id: Uuid,
     #[serde(skip_serializing_if = "is_zero")]
     pub timeout_seconds: u32,
     pub status: JobDoneTriggerWebhookStatus,
@@ -75,8 +76,8 @@ impl JobDoneTriggerWebhook {
 impl From<&JobDoneTriggerWebhookEntity> for JobDoneTriggerWebhook {
     fn from(job_done_trigger_webhook_entity: &JobDoneTriggerWebhookEntity) -> Self {
         Self {
-            id: job_done_trigger_webhook_entity.id.clone(),
-            webhook_id: job_done_trigger_webhook_entity.webhook_id.clone(),
+            id: Uuid::parse_str(&job_done_trigger_webhook_entity.id).expect("Uuid from db should be correct!"),
+            webhook_id: Uuid::parse_str(&job_done_trigger_webhook_entity.webhook_id).expect("Uuid from db should be correct!"),
             timeout_seconds: job_done_trigger_webhook_entity.timeout_seconds as u32,
             status: (&job_done_trigger_webhook_entity.status).into(),
             called_at: job_done_trigger_webhook_entity.called_at.map(|naive_date_time| naive_date_time.and_utc()),
@@ -118,7 +119,7 @@ pub struct CreateJobDoneWatcherRequest {
 #[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateJobDoneTriggerWebhookRequest {
-    pub webhook_id: String,
+    pub webhook_id: Uuid,
     #[serde(default = "default_timeout_seconds")]
     pub timeout_seconds: u32,
 }
@@ -126,7 +127,7 @@ pub struct CreateJobDoneTriggerWebhookRequest {
 #[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct JobDoneWatcher {
-    pub id: String,
+    pub id: Uuid,
     pub job_name: String,
     #[serde(skip_serializing_if = "is_zero")]
     pub timeout_seconds: u32,
@@ -144,7 +145,7 @@ impl JobDoneWatcher {
 impl From<JobDoneWatcherEntity> for JobDoneWatcher {
     fn from(job_done_watcher_entity: JobDoneWatcherEntity) -> Self {
         Self {
-            id: job_done_watcher_entity.id,
+            id: Uuid::parse_str(&job_done_watcher_entity.id).expect("Uuid from db should be correct!"),
             job_name: job_done_watcher_entity.job_name,
             timeout_seconds: job_done_watcher_entity.timeout_seconds as u32,
             status: job_done_watcher_entity.status.into(),

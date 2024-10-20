@@ -13,15 +13,15 @@ pub async fn create_job_done_watcher(job_done_watcher: CreateJobDoneWatcherReque
     let job_done_trigger_webhooks: Vec<_> = job_done_watcher.job_done_trigger_webhooks
         .iter()
         .map(|job_done_trigger_webhook| JobDoneTriggerWebhook {
-            id: Uuid::new_v4().to_string(),
-            webhook_id: job_done_trigger_webhook.webhook_id.clone(),
+            id: Uuid::new_v4(),
+            webhook_id: job_done_trigger_webhook.webhook_id,
             timeout_seconds: job_done_trigger_webhook.timeout_seconds,
             status: JobDoneTriggerWebhookStatus::NotCalled,
             called_at: None,
         }).collect();
 
     let job_done_watcher = JobDoneWatcher {
-        id: Uuid::new_v4().to_string(),
+        id: Uuid::new_v4(),
         job_name: job_done_watcher.job_name.clone(),
         timeout_seconds: job_done_watcher.timeout_seconds,
         job_done_trigger_webhooks,
@@ -42,9 +42,9 @@ pub async fn create_job_done_watcher(job_done_watcher: CreateJobDoneWatcherReque
         })
 }
 
-fn start_timer_job_done_watcher(job_done_watcher_id: &str, timeout_secs: u64) {
-    let job_done_watcher_id = job_done_watcher_id.to_string();
+fn start_timer_job_done_watcher(job_done_watcher_id: &Uuid, timeout_secs: u64) {
     println!("Start timeout {} for {}", timeout_secs, job_done_watcher_id);
+    let job_done_watcher_id = job_done_watcher_id.clone();
     actix_web::rt::spawn(async move {
         actix_web::rt::time::sleep(Duration::from_secs(timeout_secs)).await;
         println!("Timeout {} for {}", timeout_secs, job_done_watcher_id);
@@ -78,7 +78,7 @@ pub async fn get_job_done_watchers() -> anyhow::Result<Vec<JobDoneWatcher>> {
     job_done_watcher_repository.find_all_watchers().await
 }
 
-pub async fn get_job_done_watcher_by_id(job_done_watcher_id: &str) -> anyhow::Result<Option<JobDoneWatcher>> {
+pub async fn get_job_done_watcher_by_id(job_done_watcher_id: &Uuid) -> anyhow::Result<Option<JobDoneWatcher>> {
     let job_done_watcher_repository = repository::get_job_done_watcher_repository();
     job_done_watcher_repository.find_watcher_by_id(job_done_watcher_id).await
 }
@@ -119,7 +119,7 @@ async fn find_pending_job_done_watchers(job_name: &str) -> anyhow::Result<Vec<Jo
         JobDoneWatcherStatus::Pending).await
 }
 
-async fn process_job_done_watcher(job_done_watcher_id: &str) -> anyhow::Result<String> {
+async fn process_job_done_watcher(job_done_watcher_id: &Uuid) -> anyhow::Result<String> {
     let job_done_watcher_repository = repository::get_job_done_watcher_repository();
 
     job_done_watcher_repository.lock(job_done_watcher_id,
@@ -171,7 +171,7 @@ async fn call_job_done_trigger_webhooks(mut job_done_watcher: JobDoneWatcher) ->
 }
 
 async fn call_job_done_trigger_webhook(job_done_trigger_webhook: &mut JobDoneTriggerWebhook) -> anyhow::Result<bool> {
-    let webhook_id = Uuid::parse_str(&job_done_trigger_webhook.webhook_id).expect("uuid should be correct!");
+    let webhook_id = job_done_trigger_webhook.webhook_id;
     match service::webhooks::get_webhook_by_id(&webhook_id).await? {
         Some(webhook) => {
             job_done_trigger_webhook.set_called_at(Utc::now());

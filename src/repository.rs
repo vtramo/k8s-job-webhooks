@@ -2,6 +2,7 @@ use std::future::Future;
 
 use sqlx::{Database, Pool, Sqlite, SqlitePool};
 use sqlx::pool::PoolConnection;
+use uuid::Uuid;
 
 pub use job_done_watchers::get_job_done_watcher_repository;
 pub use job_done_watchers::InMemoryJobDoneWatcherRepository;
@@ -15,7 +16,7 @@ mod job_done_watchers;
 
 #[async_trait::async_trait]
 pub trait AsyncLockGuard<T> {
-    async fn lock(&self, id: &str, critical_section: Box<dyn FnOnce(T) -> Box<dyn Future<Output=anyhow::Result<()>> + Send> + Send>) -> anyhow::Result<()>;
+    async fn lock(&self, id: &Uuid, critical_section: Box<dyn FnOnce(T) -> Box<dyn Future<Output=anyhow::Result<()>> + Send> + Send>) -> anyhow::Result<()>;
 }
 
 
