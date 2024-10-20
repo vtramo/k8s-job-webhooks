@@ -155,9 +155,36 @@ impl JobDoneWatcherRepository for SqliteDatabase {
         Ok(job_done_watcher_entities.into_iter().map(JobDoneWatcher::from).collect())
     }
 
-    async fn find_watcher_by_id(&self, id: &str) -> anyhow::Result<Option<JobDoneWatcher>> {
-        todo!()
     async fn find_watcher_by_id(&self, id: &Uuid) -> anyhow::Result<Option<JobDoneWatcher>> {
+        let mut conn = self.acquire()
+            .await
+            .with_context(|| "Unable to acquire a database connection".to_string())?;
+
+        let id = id.to_string();
+        let job_done_watcher_entity: Option<JobDoneWatcherEntity> = sqlx::query_as!(JobDoneWatcherEntity, r#"
+            SELECT
+                job_done_watchers.id,
+                job_done_watchers.job_name,
+                job_done_watchers.timeout_seconds,
+                job_done_watchers.status,
+                job_done_watchers.created_at,
+                coalesce(json_group_array(json_object(
+                    'id', job_done_trigger_webhooks.id,
+                    'webhook_id', job_done_trigger_webhooks.webhook_id,
+                    'timeout_seconds', job_done_trigger_webhooks.timeout_seconds,
+                    'status', job_done_trigger_webhooks.status,
+                    'called_at', job_done_trigger_webhooks.called_at)), json_object()) AS "job_done_trigger_webhooks!: String"
+            FROM
+                job_done_watchers
+            LEFT JOIN
+                job_done_trigger_webhooks ON job_done_watchers.id = job_done_trigger_webhooks.job_done_watcher_id
+            WHERE
+                job_done_watchers.id = ?
+            GROUP BY
+                job_done_watchers.id
+        "#, id).fetch_optional(&mut *conn).await?;
+
+        Ok(job_done_watcher_entity.map(JobDoneWatcher::from))
     }
 
     async fn create_watcher(&self, job_done_watcher: &JobDoneWatcher) -> anyhow::Result<()> {
