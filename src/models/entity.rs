@@ -1,4 +1,8 @@
 use std::fmt::{Display, Formatter};
+use std::ops::Deref;
+
+use k8s_openapi::serde_json;
+use serde::Deserialize;
 
 #[derive(sqlx::FromRow, Debug)]
 pub struct WebhookEntity {
@@ -9,16 +13,17 @@ pub struct WebhookEntity {
     pub created_at: chrono::NaiveDateTime,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, sqlx::FromRow)]
 pub struct JobDoneWatcherEntity {
     pub id: String,
     pub job_name: String,
     pub timeout_seconds: i64,
     pub status: JobDoneWatcherStatusEntity,
     pub created_at: chrono::NaiveDateTime,
+    pub job_done_trigger_webhooks: JobDoneTriggerWebhooksEntity,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, sqlx::FromRow, Deserialize)]
 pub struct JobDoneTriggerWebhookEntity {
     pub id: String,
     pub webhook_id: String,
@@ -27,7 +32,30 @@ pub struct JobDoneTriggerWebhookEntity {
     pub called_at: Option<chrono::NaiveDateTime>,
 }
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug)]
+pub struct JobDoneTriggerWebhooksEntity(Vec<JobDoneTriggerWebhookEntity>);
+
+impl Deref for JobDoneTriggerWebhooksEntity {
+    type Target = Vec<JobDoneTriggerWebhookEntity>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<String> for JobDoneTriggerWebhooksEntity {
+    fn from(value: String) -> Self {
+        if value.contains("\"id\":null") {
+            return JobDoneTriggerWebhooksEntity(vec![])
+        }
+
+        let result: Vec<JobDoneTriggerWebhookEntity> = serde_json::from_str(&value).unwrap_or(vec![]);
+        JobDoneTriggerWebhooksEntity(result)
+    }
+}
+
+
+#[derive(Clone, Debug, Copy, Deserialize)]
 pub enum JobDoneTriggerWebhookStatusEntity {
     Called,
     NotCalled,

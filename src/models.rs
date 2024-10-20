@@ -1,11 +1,12 @@
-pub mod entity;
-
 use std::fmt::Display;
 
 use chrono::{DateTime, Utc};
 use k8s_openapi::serde::Deserialize;
 use serde::{Deserializer, Serialize, Serializer};
-use crate::models::entity::WebhookEntity;
+
+use crate::models::entity::{JobDoneTriggerWebhookEntity, JobDoneTriggerWebhookStatusEntity, JobDoneWatcherEntity, JobDoneWatcherStatusEntity, WebhookEntity};
+
+pub mod entity;
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -71,6 +72,18 @@ impl JobDoneTriggerWebhook {
     }
 }
 
+impl From<&JobDoneTriggerWebhookEntity> for JobDoneTriggerWebhook {
+    fn from(job_done_trigger_webhook_entity: &JobDoneTriggerWebhookEntity) -> Self {
+        Self {
+            id: job_done_trigger_webhook_entity.id.clone(),
+            webhook_id: job_done_trigger_webhook_entity.webhook_id.clone(),
+            timeout_seconds: job_done_trigger_webhook_entity.timeout_seconds as u32,
+            status: (&job_done_trigger_webhook_entity.status).into(),
+            called_at: job_done_trigger_webhook_entity.called_at.map(|naive_date_time| naive_date_time.and_utc()),
+        }
+    }
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug, Copy)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum JobDoneTriggerWebhookStatus {
@@ -79,6 +92,18 @@ pub enum JobDoneTriggerWebhookStatus {
     Failed,
     Timeout,
     Cancelled,
+}
+
+impl From<&JobDoneTriggerWebhookStatusEntity> for JobDoneTriggerWebhookStatus {
+    fn from(job_done_trigger_webhook_status_entity: &JobDoneTriggerWebhookStatusEntity) -> Self {
+        match job_done_trigger_webhook_status_entity {
+            JobDoneTriggerWebhookStatusEntity::Called => JobDoneTriggerWebhookStatus::Called,
+            JobDoneTriggerWebhookStatusEntity::NotCalled => JobDoneTriggerWebhookStatus::NotCalled,
+            JobDoneTriggerWebhookStatusEntity::Failed => JobDoneTriggerWebhookStatus::Failed,
+            JobDoneTriggerWebhookStatusEntity::Timeout => JobDoneTriggerWebhookStatus::Timeout,
+            JobDoneTriggerWebhookStatusEntity::Cancelled => JobDoneTriggerWebhookStatus::Cancelled,
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -116,6 +141,19 @@ impl JobDoneWatcher {
     }
 }
 
+impl From<JobDoneWatcherEntity> for JobDoneWatcher {
+    fn from(job_done_watcher_entity: JobDoneWatcherEntity) -> Self {
+        Self {
+            id: job_done_watcher_entity.id,
+            job_name: job_done_watcher_entity.job_name,
+            timeout_seconds: job_done_watcher_entity.timeout_seconds as u32,
+            status: job_done_watcher_entity.status.into(),
+            created_at: job_done_watcher_entity.created_at.and_utc(),
+            job_done_trigger_webhooks: job_done_watcher_entity.job_done_trigger_webhooks.iter().map(JobDoneTriggerWebhook::from).collect(),
+        }
+    }
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug, Copy)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[derive(PartialEq)]
@@ -126,6 +164,19 @@ pub enum JobDoneWatcherStatus {
     Cancelled,
     Failed,
     Timeout,
+}
+
+impl From<JobDoneWatcherStatusEntity> for JobDoneWatcherStatus {
+    fn from(job_done_watcher_status: JobDoneWatcherStatusEntity) -> Self {
+        match job_done_watcher_status {
+            JobDoneWatcherStatusEntity::Completed => JobDoneWatcherStatus::Completed,
+            JobDoneWatcherStatusEntity::PartiallyCompleted => JobDoneWatcherStatus::PartiallyCompleted,
+            JobDoneWatcherStatusEntity::Pending => JobDoneWatcherStatus::Pending,
+            JobDoneWatcherStatusEntity::Cancelled => JobDoneWatcherStatus::Cancelled,
+            JobDoneWatcherStatusEntity::Failed => JobDoneWatcherStatus::Failed,
+            JobDoneWatcherStatusEntity::Timeout => JobDoneWatcherStatus::Timeout,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
