@@ -18,6 +18,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(app_state_idempotency_map.clone())
             .service(controller::webhooks::post_webhooks)
             .service(controller::webhooks::get_webhooks)
+            .service(controller::webhooks::get_webhook_by_id)
             .service(controller::job_done_watchers::post_job_done_watchers)
             .service(controller::job_done_watchers::get_job_done_watchers)
             .service(controller::job_done_watchers::get_job_done_watcher)
