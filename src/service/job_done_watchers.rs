@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 
 use chrono::Utc;
@@ -11,14 +9,7 @@ use uuid::Uuid;
 use crate::{repository, service};
 use crate::models::{CreateJobDoneWatcherRequest, JobDoneTriggerWebhook, JobDoneTriggerWebhookStatus, JobDoneWatcher, JobDoneWatcherStatus};
 
-pub static ACTIVE_JOB_DONE_WATCHERS_IDS_BY_JOB_NAME:
-    LazyLock<Mutex<HashMap<String, Vec<String>>>> =
-        LazyLock::new(|| {
-            Mutex::new(HashMap::with_capacity(10))
-        });
-
-
-pub async fn create_job_done_watcher(job_done_watcher: CreateJobDoneWatcherRequest) -> JobDoneWatcher {
+pub async fn create_job_done_watcher(job_done_watcher: CreateJobDoneWatcherRequest) -> anyhow::Result<JobDoneWatcher> {
     let job_done_trigger_webhooks: Vec<_> = job_done_watcher.job_done_trigger_webhooks
         .iter()
         .map(|job_done_trigger_webhook| JobDoneTriggerWebhook {
@@ -43,9 +34,12 @@ pub async fn create_job_done_watcher(job_done_watcher: CreateJobDoneWatcherReque
     }
 
     let job_done_watcher_repository = repository::get_job_done_watcher_repository();
-    job_done_watcher_repository.create_watcher(job_done_watcher.clone()).await;
 
-    job_done_watcher
+    job_done_watcher_repository.create_watcher(&job_done_watcher).await
+        .map(|_| job_done_watcher)
+        .map_err(|error| {
+            anyhow::anyhow!("Failed to create job_done_watcher: {}", error)
+        })
 }
 
 fn start_timer_job_done_watcher(job_done_watcher_id: &str, timeout_secs: u64) {
@@ -65,7 +59,7 @@ fn start_timer_job_done_watcher(job_done_watcher_id: &str, timeout_secs: u64) {
                       .for_each(|job_done_trigger_webhook|
                           job_done_trigger_webhook.status = JobDoneTriggerWebhookStatus::Timeout);
                   let job_done_watcher_repository = repository::get_job_done_watcher_repository();
-                  job_done_watcher_repository.create_watcher(job_done_watcher).await;
+                  job_done_watcher_repository.create_watcher(&job_done_watcher).await?;
               }
 
               Ok(())
@@ -79,19 +73,26 @@ fn start_timer_job_done_watcher(job_done_watcher_id: &str, timeout_secs: u64) {
 }
 
 
-pub async fn get_job_done_watchers() -> Vec<JobDoneWatcher> {
+pub async fn get_job_done_watchers() -> anyhow::Result<Vec<JobDoneWatcher>> {
     let job_done_watcher_repository = repository::get_job_done_watcher_repository();
     job_done_watcher_repository.find_all_watchers().await
 }
 
-pub async fn get_job_done_watcher_by_id(job_done_watcher_id: &str) -> Option<JobDoneWatcher> {
+pub async fn get_job_done_watcher_by_id(job_done_watcher_id: &str) -> anyhow::Result<Option<JobDoneWatcher>> {
     let job_done_watcher_repository = repository::get_job_done_watcher_repository();
     job_done_watcher_repository.find_watcher_by_id(job_done_watcher_id).await
 }
 
 pub async fn notify_job_done_watchers(job_name: &str) {
-    let pending_job_done_watcher_ids: Vec<_> = find_pending_job_done_watchers(job_name)
-        .await
+    let mut pending_job_done_watchers = match find_pending_job_done_watchers(job_name).await {
+        Ok(pending_job_done_watchers) => pending_job_done_watchers,
+        Err(error) => {
+            eprintln!("Unable to notify watchers of job {}: {:#?}", job_name, error);
+            return;
+        }
+    };
+
+    let pending_job_done_watcher_ids: Vec<_> = pending_job_done_watchers
         .iter_mut()
         .map(|job_done_watcher| job_done_watcher.id.clone())
         .collect();
@@ -110,7 +111,7 @@ pub async fn notify_job_done_watchers(job_name: &str) {
         });
 }
 
-async fn find_pending_job_done_watchers(job_name: &str) -> Vec<JobDoneWatcher> {
+async fn find_pending_job_done_watchers(job_name: &str) -> anyhow::Result<Vec<JobDoneWatcher>> {
     let job_done_watcher_repository = repository::get_job_done_watcher_repository();
 
     job_done_watcher_repository.find_all_watchers_by_job_name_and_status(
@@ -166,9 +167,7 @@ async fn call_job_done_trigger_webhooks(mut job_done_watcher: JobDoneWatcher) ->
     job_done_watcher.set_status(job_done_watcher_status);
 
     let job_done_watcher_repository = repository::get_job_done_watcher_repository();
-    job_done_watcher_repository.create_watcher(job_done_watcher).await;
-
-    Ok(())
+    job_done_watcher_repository.create_watcher(&job_done_watcher).await
 }
 
 async fn call_job_done_trigger_webhook(job_done_trigger_webhook: &mut JobDoneTriggerWebhook) -> anyhow::Result<bool> {

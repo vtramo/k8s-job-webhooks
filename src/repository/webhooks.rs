@@ -13,7 +13,7 @@ use crate::repository::{SqliteDatabase, SqlxAcquire};
 pub trait WebhookRepository: Send + Sync {
     async fn find_all_webhooks(&self) -> anyhow::Result<Vec<Webhook>>;
     async fn find_webhook_by_id(&self, uuid: &Uuid) -> anyhow::Result<Option<Webhook>>;
-    async fn create_webhook(&self, entity: Webhook) -> anyhow::Result<()>;
+    async fn create_webhook(&self, webhook: &Webhook) -> anyhow::Result<()>;
 }
 
 pub static WEBHOOK_REPOSITORY: OnceLock<Arc<dyn WebhookRepository>> = OnceLock::new();
@@ -52,8 +52,8 @@ impl WebhookRepository for InMemoryWebhookRepository {
         Ok(self.webhook_by_id.get(&uuid.to_string()))
     }
 
-    async fn create_webhook(&self, webhook: Webhook) -> anyhow::Result<()> {
-        Ok(self.webhook_by_id.insert(webhook.id.clone(), webhook))
+    async fn create_webhook(&self, webhook: &Webhook) -> anyhow::Result<()> {
+        Ok(self.webhook_by_id.insert(webhook.id.clone(), webhook.clone()))
     }
 }
 
@@ -83,7 +83,7 @@ impl WebhookRepository for SqliteDatabase {
             .map(Webhook::from))
     }
 
-    async fn create_webhook(&self, webhook: Webhook) -> anyhow::Result<()> {
+    async fn create_webhook(&self, webhook: &Webhook) -> anyhow::Result<()> {
         let mut conn = self.acquire().await?;
 
         let now = chrono::Utc::now();

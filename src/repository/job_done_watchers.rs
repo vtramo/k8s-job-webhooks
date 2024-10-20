@@ -8,14 +8,30 @@ use futures_util::StreamExt;
 use moka::sync::Cache;
 
 use crate::models::{JobDoneWatcher, JobDoneWatcherStatus};
-use crate::repository::AsyncLockGuard;
+use crate::repository::{AsyncLockGuard, SqliteDatabase, SqlxAcquire};
 
 #[async_trait]
 pub trait JobDoneWatcherRepository: AsyncLockGuard<JobDoneWatcher> + Send + Sync {
-    async fn find_all_watchers_by_job_name_and_status(&self, job_name: &str, status: JobDoneWatcherStatus) -> Vec<JobDoneWatcher>;
-    async fn find_all_watchers(&self) -> Vec<JobDoneWatcher>;
-    async fn find_watcher_by_id(&self, id: &str) -> Option<JobDoneWatcher>;
-    async fn create_watcher(&self, job_done_watcher: JobDoneWatcher);
+    async fn find_all_watchers_by_job_name_and_status(
+        &self,
+        job_name: &str, // TODO: newtype pattern
+        status: JobDoneWatcherStatus
+    ) -> anyhow::Result<Vec<JobDoneWatcher>>;
+    async fn find_all_watchers(&self) -> anyhow::Result<Vec<JobDoneWatcher>>;
+    async fn find_watcher_by_id(&self, id: &str) -> anyhow::Result<Option<JobDoneWatcher>>;
+    async fn create_watcher(&self, job_done_watcher: &JobDoneWatcher) -> anyhow::Result<()>;
+}
+
+pub static JOB_DONE_WATCHER_REPOSITORY: OnceLock<Arc<dyn JobDoneWatcherRepository>> = OnceLock::new();
+
+pub fn set_job_done_watcher_repository(job_done_watcher_repository: impl JobDoneWatcherRepository + 'static) {
+    if let Err(_) = JOB_DONE_WATCHER_REPOSITORY.set(Arc::new(job_done_watcher_repository)) {
+        panic!("You can't set Webhook Repository twice!");
+    }
+}
+
+pub fn get_job_done_watcher_repository() -> Arc<dyn JobDoneWatcherRepository> {
+    Arc::clone(JOB_DONE_WATCHER_REPOSITORY.get().expect("Should be set!"))
 }
 
 pub struct InMemoryJobDoneWatcherRepository {
@@ -41,8 +57,12 @@ impl AsyncLockGuard<JobDoneWatcher> for InMemoryJobDoneWatcherRepository {
 
 #[async_trait]
 impl JobDoneWatcherRepository for InMemoryJobDoneWatcherRepository {
-    async fn find_all_watchers_by_job_name_and_status(&self, job_name: &str, status: JobDoneWatcherStatus) -> Vec<JobDoneWatcher> {
-        stream::iter(self.job_done_watcher_by_id.iter())
+    async fn find_all_watchers_by_job_name_and_status(
+        &self,
+        job_name: &str,
+        status: JobDoneWatcherStatus
+    ) -> anyhow::Result<Vec<JobDoneWatcher>> {
+        Ok(stream::iter(self.job_done_watcher_by_id.iter())
             .filter_map(|(_, job_done_watcher): (_, Arc<RwLock<JobDoneWatcher>>)| {
                 let job_done_watcher = Arc::clone(&job_done_watcher);
                 async move {
@@ -55,39 +75,64 @@ impl JobDoneWatcherRepository for InMemoryJobDoneWatcherRepository {
                 }
             })
             .collect::<Vec<_>>()
-            .await
+            .await)
     }
 
-    async fn find_all_watchers(&self) -> Vec<JobDoneWatcher> {
-        stream::iter(self.job_done_watcher_by_id.iter())
+    async fn find_all_watchers(&self) -> anyhow::Result<Vec<JobDoneWatcher>> {
+        Ok(stream::iter(self.job_done_watcher_by_id.iter())
             .then(|(_, job_done_watcher)| {
                 let job_done_watcher = Arc::clone(&job_done_watcher);
                 async move { job_done_watcher.read().await.clone() }
             })
             .collect::<Vec<_>>()
-            .await
+            .await)
     }
 
-    async fn find_watcher_by_id(&self, id: &str) -> Option<JobDoneWatcher> {
-        let job_done_watcher = Arc::clone(&self.job_done_watcher_by_id.get(id)?);
-        let job_done_watcher = job_done_watcher.read().await;
-        Some(job_done_watcher.clone())
+    async fn find_watcher_by_id(&self, id: &str) -> anyhow::Result<Option<JobDoneWatcher>> {
+        if let Some(job_done_watcher) = self.job_done_watcher_by_id.get(id) {
+            let job_done_watcher = Arc::clone(&job_done_watcher);
+            let job_done_watcher = job_done_watcher.read().await;
+            Ok(Some(job_done_watcher.clone()))
+        } else {
+            Ok(None)
+        }
     }
 
-    async fn create_watcher(&self, job_done_watcher: JobDoneWatcher) {
+    async fn create_watcher(&self, job_done_watcher: &JobDoneWatcher) -> anyhow::Result<()> {
         println!("Saving {:#?}", job_done_watcher);
-        self.job_done_watcher_by_id.insert(job_done_watcher.id.clone(), Arc::new(RwLock::new(job_done_watcher)));
+        self.job_done_watcher_by_id.insert(job_done_watcher.id.clone(), Arc::new(RwLock::new(job_done_watcher.clone())));
+        Ok(())
     }
 }
 
-pub static JOB_DONE_WATCHER_REPOSITORY: OnceLock<Arc<dyn JobDoneWatcherRepository>> = OnceLock::new();
-
-pub fn set_job_done_watcher_repository(job_done_watcher_repository: impl JobDoneWatcherRepository + 'static) {
-    if let Err(_) = JOB_DONE_WATCHER_REPOSITORY.set(Arc::new(job_done_watcher_repository)) {
-        panic!("You can't set Webhook Repository twice!");
+#[async_trait::async_trait]
+impl AsyncLockGuard<JobDoneWatcher> for SqliteDatabase {
+    async fn lock(&self, id: &str, critical_section: Box<dyn FnOnce(JobDoneWatcher) -> Box<dyn Future<Output=anyhow::Result<()>> + Send> + Send>) -> anyhow::Result<()> {
+        todo!()
     }
 }
 
-pub fn get_job_done_watcher_repository() -> Arc<dyn JobDoneWatcherRepository> {
-    Arc::clone(JOB_DONE_WATCHER_REPOSITORY.get().expect("Should be set!"))
+
+#[async_trait::async_trait]
+impl JobDoneWatcherRepository for SqliteDatabase {
+    async fn find_all_watchers_by_job_name_and_status(
+        &self,
+        job_name: &str, // TODO: newtype pattern
+        status: JobDoneWatcherStatus
+    ) -> anyhow::Result<Vec<JobDoneWatcher>> {
+        todo!()
+    }
+
+    async fn find_all_watchers(&self) -> anyhow::Result<Vec<JobDoneWatcher>> {
+        let mut conn = self.acquire().await?;
+        todo!()
+    }
+
+    async fn find_watcher_by_id(&self, id: &str) -> anyhow::Result<Option<JobDoneWatcher>> {
+        todo!()
+    }
+
+    async fn create_watcher(&self, job_done_watcher: &JobDoneWatcher) -> anyhow::Result<()> {
+        todo!()
+    }
 }

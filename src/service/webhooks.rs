@@ -14,7 +14,7 @@ pub async fn create_webhook(webhook: CreateWebhookRequest) -> anyhow::Result<Web
     };
 
     let webhook_repository = repository::get_webhook_repository();
-    match webhook_repository.create_webhook(webhook.clone()).await {
+    match webhook_repository.create_webhook(&webhook).await {
         Ok(()) => Ok(webhook),
         Err(error) => Err(error)
     }
