@@ -8,11 +8,14 @@ use futures_util::StreamExt;
 use moka::sync::Cache;
 
 use crate::models::{JobDoneWatcher, JobDoneWatcherStatus};
-use crate::repository::{AsyncLockGuard, CrudRepository};
+use crate::repository::AsyncLockGuard;
 
 #[async_trait]
-pub trait JobDoneWatcherRepository: CrudRepository<Entity = JobDoneWatcher> + AsyncLockGuard<JobDoneWatcher> {
+pub trait JobDoneWatcherRepository: AsyncLockGuard<JobDoneWatcher> + Send + Sync {
     async fn find_all_by_job_name_and_status(&self, job_name: &str, status: JobDoneWatcherStatus) -> Vec<JobDoneWatcher>;
+    async fn find_all(&self) -> Vec<JobDoneWatcher>;
+    async fn find_by_id(&self, id: &str) -> Option<JobDoneWatcher>;
+    async fn save(&self, job_done_watcher: JobDoneWatcher);
 }
 
 pub struct InMemoryJobDoneWatcherRepository {
@@ -54,11 +57,6 @@ impl JobDoneWatcherRepository for InMemoryJobDoneWatcherRepository {
             .collect::<Vec<_>>()
             .await
     }
-}
-
-#[async_trait]
-impl CrudRepository for InMemoryJobDoneWatcherRepository {
-    type Entity = JobDoneWatcher;
 
     async fn find_all(&self) -> Vec<JobDoneWatcher> {
         stream::iter(self.job_done_watcher_by_id.iter())

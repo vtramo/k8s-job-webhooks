@@ -1,12 +1,16 @@
 use std::sync::{Arc, OnceLock};
+
 use async_trait::async_trait;
 use moka::sync::Cache;
 
 use crate::models::Webhook;
-use crate::repository::CrudRepository;
 
 #[async_trait]
-pub trait WebhookRepository: CrudRepository<Entity=Webhook> {}
+pub trait WebhookRepository: Send + Sync {
+    async fn find_all(&self) -> Vec<Webhook>;
+    async fn find_by_id(&self, id: &str) -> Option<Webhook>;
+    async fn save(&self, entity: Webhook);
+}
 
 pub struct InMemoryWebhookRepository {
     webhook_by_id: Cache<String, Webhook>,
@@ -21,9 +25,7 @@ impl InMemoryWebhookRepository {
 }
 
 #[async_trait]
-impl CrudRepository for InMemoryWebhookRepository {
-    type Entity = Webhook;
-
+impl WebhookRepository for InMemoryWebhookRepository {
     async fn find_all(&self) -> Vec<Webhook> {
         self.webhook_by_id.iter()
             .map(|(_, webhook)| webhook)
@@ -38,8 +40,6 @@ impl CrudRepository for InMemoryWebhookRepository {
         self.webhook_by_id.insert(webhook.id.clone(), webhook);
     }
 }
-
-impl WebhookRepository for InMemoryWebhookRepository {}
 
 pub static WEBHOOK_REPOSITORY: OnceLock<Arc<dyn WebhookRepository>> = OnceLock::new();
 
