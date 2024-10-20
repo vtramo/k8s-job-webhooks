@@ -1,4 +1,5 @@
 use std::sync::{Arc, OnceLock};
+use anyhow::Context;
 
 use async_trait::async_trait;
 use moka::sync::Cache;
@@ -59,7 +60,9 @@ impl WebhookRepository for InMemoryWebhookRepository {
 #[async_trait]
 impl WebhookRepository for SqliteDatabase {
     async fn find_all(&self) -> anyhow::Result<Vec<Webhook>> {
-        let mut conn = self.acquire().await?;
+        let mut conn = self.acquire()
+            .await
+            .with_context(|| "Unable to acquire a database connection".to_string())?;
 
         let webhook_entities: Vec<WebhookEntity> = sqlx::query_as!(WebhookEntity, "SELECT * FROM webhooks")
             .fetch_all(&mut *conn)
@@ -69,10 +72,38 @@ impl WebhookRepository for SqliteDatabase {
     }
 
     async fn find_by_id(&self, uuid: &Uuid) -> anyhow::Result<Option<Webhook>> {
-        todo!()
+        let mut conn = self.acquire()
+            .await
+            .with_context(|| "Unable to acquire a database connection".to_string())?;
+
+        let uuid = uuid.to_string();
+        Ok(sqlx::query_as!(WebhookEntity, "SELECT * FROM webhooks WHERE id = ?1", uuid)
+            .fetch_optional(&mut *conn)
+            .await?
+            .map(Webhook::from))
     }
 
     async fn save(&self, webhook: Webhook) -> anyhow::Result<()> {
-        todo!()
+        let mut conn = self.acquire().await?;
+
+        let now = chrono::Utc::now();
+        let webhook_id = webhook.id.clone();
+        let webhook_url = webhook.url.to_string();
+        let webhook_request_body = webhook.request_body.clone();
+        let webhook_description = webhook.description.clone();
+        sqlx::query!(
+            r#"
+                INSERT INTO webhooks ( id, url, request_body, description, created_at )
+                VALUES ( ?1, ?2, ?3, ?4, ?5 )
+            "#,
+            webhook_id,
+            webhook_url,
+            webhook_request_body,
+            webhook_description,
+            now
+        ).execute(&mut *conn)
+         .await?;
+
+        Ok(())
     }
 }

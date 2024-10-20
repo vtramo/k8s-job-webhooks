@@ -37,6 +37,18 @@ impl From<&WebhookEntity> for Webhook {
     }
 }
 
+impl From<WebhookEntity> for Webhook {
+    fn from(webhook_entity: WebhookEntity) -> Self {
+        Self {
+            id: webhook_entity.id,
+            url: Url(url::Url::parse(&webhook_entity.url).expect("url should be correct!")),
+            request_body: webhook_entity.request_body,
+            description: webhook_entity.description,
+            created_at: webhook_entity.created_at.and_utc(),
+        }
+    }
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct JobDoneTriggerWebhook {
