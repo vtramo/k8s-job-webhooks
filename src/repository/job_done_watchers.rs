@@ -32,10 +32,10 @@ impl InMemoryJobDoneWatcherRepository {
 
 #[async_trait::async_trait]
 impl AsyncLockGuard<JobDoneWatcher> for InMemoryJobDoneWatcherRepository {
-    async fn lock(&self, id: &str, critical_section: Box<dyn FnOnce(JobDoneWatcher) -> Box<dyn Future<Output=()> + Send> + Send>) {
+    async fn lock(&self, id: &str, critical_section: Box<dyn FnOnce(JobDoneWatcher) -> Box<dyn Future<Output=anyhow::Result<()>> + Send> + Send>) -> anyhow::Result<()> {
         let job_done_watcher = self.job_done_watcher_by_id.get(id).unwrap();
         let job_done_watcher = job_done_watcher.write().await;
-        Box::into_pin(critical_section(job_done_watcher.clone())).await;
+        Box::into_pin(critical_section(job_done_watcher.clone())).await
     }
 }
 

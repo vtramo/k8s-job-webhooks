@@ -15,7 +15,7 @@ mod job_done_watchers;
 
 #[async_trait::async_trait]
 pub trait AsyncLockGuard<T> {
-    async fn lock(&self, id: &str, critical_section: Box<dyn FnOnce(T) -> Box<dyn Future<Output=()> + Send> + Send>);
+    async fn lock(&self, id: &str, critical_section: Box<dyn FnOnce(T) -> Box<dyn Future<Output=anyhow::Result<()>> + Send> + Send>) -> anyhow::Result<()>;
 }
 
 
