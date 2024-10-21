@@ -1,7 +1,7 @@
 use std::future::Future;
 use std::sync::{Arc, OnceLock};
 
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use async_rwlock::RwLock;
 use async_trait::async_trait;
 use futures_util::stream;
@@ -24,6 +24,7 @@ pub trait JobDoneWatcherRepository: AsyncLockGuard<JobDoneWatcher> + Send + Sync
     async fn find_all_watchers(&self) -> anyhow::Result<Vec<JobDoneWatcher>>;
     async fn find_watcher_by_id(&self, id: &Uuid) -> anyhow::Result<Option<JobDoneWatcher>>;
     async fn create_watcher(&self, job_done_watcher: &JobDoneWatcher) -> anyhow::Result<()>;
+    async fn update_watcher_status(&self, id: &Uuid, job_done_watcher_status: JobDoneWatcherStatus) -> anyhow::Result<()>;
 }
 
 pub static JOB_DONE_WATCHER_REPOSITORY: OnceLock<Arc<dyn JobDoneWatcherRepository>> = OnceLock::new();
@@ -103,9 +104,19 @@ impl JobDoneWatcherRepository for InMemoryJobDoneWatcherRepository {
     }
 
     async fn create_watcher(&self, job_done_watcher: &JobDoneWatcher) -> anyhow::Result<()> {
-        println!("Saving {:#?}", job_done_watcher);
         self.job_done_watcher_by_id.insert(job_done_watcher.id.to_string(), Arc::new(RwLock::new(job_done_watcher.clone())));
         Ok(())
+    }
+
+    async fn update_watcher_status(&self, id: &Uuid, job_done_watcher_status: JobDoneWatcherStatus) -> anyhow::Result<()> {
+        let id = id.to_string();
+        if let Some(job_done_watcher) = self.job_done_watcher_by_id.get(&id) {
+            let mut job_done_watcher = job_done_watcher.write().await;
+            job_done_watcher.status = job_done_watcher_status;
+        } else {
+            return Err(anyhow!("Job Done Watcher with id {} not found!", id));
+        }
+        todo!()
     }
 }
 
@@ -224,6 +235,21 @@ impl JobDoneWatcherRepository for SqliteDatabase {
 
             query_builder.build().execute(&mut *tx).await?;
         }
+
+        tx.commit().await?;
+
+        Ok(())
+    }
+
+    async fn update_watcher_status(&self, id: &Uuid, job_done_watcher_status: JobDoneWatcherStatus) -> anyhow::Result<()> {
+        let mut conn = self.acquire()
+            .await
+            .with_context(|| "Unable to acquire a database connection".to_string())?;
+
+        let mut tx = conn.begin().await?;
+
+        let id = id.to_string();
+        let result = sqlx::query_file!("queries/sqlite/update_watcher_status.sql", id).execute(&mut *tx).await?;
 
         tx.commit().await?;
 
