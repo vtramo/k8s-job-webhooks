@@ -124,7 +124,20 @@ impl JobDoneWatcherRepository for SqliteDatabase {
         job_name: &str, // TODO: newtype pattern
         status: JobDoneWatcherStatus
     ) -> anyhow::Result<Vec<JobDoneWatcher>> {
-        todo!()
+        let mut conn = self.acquire()
+            .await
+            .with_context(|| "Unable to acquire a database connection".to_string())?;
+
+        let status = status.to_string();
+        let job_done_watcher_entities: Vec<JobDoneWatcherEntity> =
+            sqlx::query_file_as!(JobDoneWatcherEntity,
+                "queries/sqlite/find_all_watchers_by_job_name_and_status.sql",
+                job_name,
+                status
+            ).fetch_all(&mut *conn)
+             .await?;
+
+        Ok(job_done_watcher_entities.into_iter().map(JobDoneWatcher::from).collect())
     }
 
     async fn find_all_watchers(&self) -> anyhow::Result<Vec<JobDoneWatcher>> {
