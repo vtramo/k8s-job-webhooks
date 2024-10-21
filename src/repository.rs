@@ -26,6 +26,7 @@ pub trait SqlxAcquire {
     async fn acquire(&self) ->  anyhow::Result<PoolConnection<Self::DB>>;
 }
 
+#[derive(Clone)]
 pub struct SqliteDatabase {
     pool_connection: Pool<Sqlite>,
 }
