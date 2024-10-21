@@ -1,3 +1,4 @@
+use std::fmt;
 use std::fmt::Display;
 
 use chrono::{DateTime, Utc};
@@ -107,6 +108,19 @@ impl From<&JobDoneTriggerWebhookStatusEntity> for JobDoneTriggerWebhookStatus {
     }
 }
 
+impl fmt::Display for JobDoneTriggerWebhookStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let output = match self {
+            JobDoneTriggerWebhookStatus::Called => "Called",
+            JobDoneTriggerWebhookStatus::NotCalled => "NotCalled",
+            JobDoneTriggerWebhookStatus::Failed => "Failed",
+            JobDoneTriggerWebhookStatus::Timeout => "Timeout",
+            JobDoneTriggerWebhookStatus::Cancelled => "Cancelled",
+        };
+        write!(f, "{}", output)
+    }
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateJobDoneWatcherRequest {
@@ -166,6 +180,21 @@ pub enum JobDoneWatcherStatus {
     Failed,
     Timeout,
 }
+
+impl fmt::Display for JobDoneWatcherStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let status_str = match self {
+            JobDoneWatcherStatus::Completed => "Completed",
+            JobDoneWatcherStatus::PartiallyCompleted => "PartiallyCompleted",
+            JobDoneWatcherStatus::Pending => "Pending",
+            JobDoneWatcherStatus::Cancelled => "Cancelled",
+            JobDoneWatcherStatus::Failed => "Failed",
+            JobDoneWatcherStatus::Timeout => "Timeout",
+        };
+        write!(f, "{}", status_str)
+    }
+}
+
 
 impl From<JobDoneWatcherStatusEntity> for JobDoneWatcherStatus {
     fn from(job_done_watcher_status: JobDoneWatcherStatusEntity) -> Self {
