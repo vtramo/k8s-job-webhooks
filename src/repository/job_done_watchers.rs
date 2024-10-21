@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::ops::Deref;
 use std::sync::{Arc, OnceLock};
 
 use anyhow::{anyhow, Context};
@@ -25,6 +26,12 @@ pub trait JobDoneWatcherRepository: AsyncLockGuard<JobDoneWatcher> + Send + Sync
     async fn find_watcher_by_id(&self, id: &Uuid) -> anyhow::Result<Option<JobDoneWatcher>>;
     async fn create_watcher(&self, job_done_watcher: &JobDoneWatcher) -> anyhow::Result<()>;
     async fn update_watcher_status(&self, id: &Uuid, job_done_watcher_status: JobDoneWatcherStatus) -> anyhow::Result<()>;
+    async fn update_watchers_status_by_job_name_and_status(
+        &self,
+        job_name: &str, // TODO: newtype pattern
+        status: JobDoneWatcherStatus,
+        new_status: JobDoneWatcherStatus
+    ) -> anyhow::Result<Vec<JobDoneWatcher>>;
 }
 
 pub static JOB_DONE_WATCHER_REPOSITORY: OnceLock<Arc<dyn JobDoneWatcherRepository>> = OnceLock::new();
@@ -113,10 +120,31 @@ impl JobDoneWatcherRepository for InMemoryJobDoneWatcherRepository {
         if let Some(job_done_watcher) = self.job_done_watcher_by_id.get(&id) {
             let mut job_done_watcher = job_done_watcher.write().await;
             job_done_watcher.status = job_done_watcher_status;
+            Ok(())
         } else {
             return Err(anyhow!("Job Done Watcher with id {} not found!", id));
         }
-        todo!()
+    }
+
+    async fn update_watchers_status_by_job_name_and_status(
+        &self,
+        job_name: &str,
+        status: JobDoneWatcherStatus,
+        new_status: JobDoneWatcherStatus
+    ) -> anyhow::Result<Vec<JobDoneWatcher>> {
+        let mut updated_watchers = Vec::new();
+
+        for (_, job_done_watcher) in &self.job_done_watcher_by_id {
+            let job_done_watcher = Arc::clone(&job_done_watcher);
+            let mut watcher = job_done_watcher.write().await;
+
+            if watcher.job_name == job_name && watcher.status == status {
+                watcher.status = new_status;
+                updated_watchers.push(watcher.clone());
+            }
+        }
+
+        Ok(updated_watchers)
     }
 }
 
@@ -241,7 +269,7 @@ impl JobDoneWatcherRepository for SqliteDatabase {
         Ok(())
     }
 
-    async fn update_watcher_status(&self, id: &Uuid, job_done_watcher_status: JobDoneWatcherStatus) -> anyhow::Result<()> {
+    async fn update_watcher_status(&self, id: &Uuid, new_status: JobDoneWatcherStatus) -> anyhow::Result<()> {
         let mut conn = self.acquire()
             .await
             .with_context(|| "Unable to acquire a database connection".to_string())?;
@@ -249,10 +277,57 @@ impl JobDoneWatcherRepository for SqliteDatabase {
         let mut tx = conn.begin().await?;
 
         let id = id.to_string();
-        let result = sqlx::query_file!("queries/sqlite/update_watcher_status.sql", id).execute(&mut *tx).await?;
+        let new_status = new_status.to_string();
+        let _ = sqlx::query_file!("queries/sqlite/update_watcher_status.sql", id, new_status).execute(&mut *tx).await?;
 
         tx.commit().await?;
 
         Ok(())
+    }
+
+    async fn update_watchers_status_by_job_name_and_status(
+        &self,
+        job_name: &str, // TODO: newtype pattern
+        status: JobDoneWatcherStatus,
+        new_status: JobDoneWatcherStatus
+    ) -> anyhow::Result<Vec<JobDoneWatcher>> {
+        let mut conn = self.acquire()
+            .await
+            .with_context(|| "Unable to acquire a database connection".to_string())?;
+
+        let mut tx = conn.begin().await?;
+
+        struct Id { id: String }
+        impl Deref for Id {
+            type Target = str;
+
+            fn deref(&self) -> &Self::Target {
+                &self.id
+            }
+        }
+        let status = status.to_string();
+        let new_status = new_status.to_string();
+        let ids: Vec<String> = sqlx::query_file_as!(
+            Id,
+            "queries/sqlite/update_watchers_status_by_job_name_and_status.sql",
+            job_name, status, new_status
+        ).fetch_all(&mut *tx).await?
+            .iter()
+            .map(|id| id.to_string())
+            .collect();
+
+        let updated_job_done_watchers: Vec<JobDoneWatcher> = sqlx::query_file_as!(
+            JobDoneWatcherEntity,
+            "queries/sqlite/find_all_watchers_by_job_name_and_status.sql",
+            job_name, status
+        ).fetch_all(&mut *tx).await?
+            .into_iter()
+            .filter(|job_done_watcher| ids.contains(&job_done_watcher.id))
+            .map(JobDoneWatcher::from)
+            .collect(); // I'm currently unable to construct a SQL query using the IN clause with sqlx and SQLite. Any suggestions are welcome!
+
+        tx.commit().await?;
+
+        Ok(updated_job_done_watchers)
     }
 }
