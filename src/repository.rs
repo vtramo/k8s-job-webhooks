@@ -43,6 +43,6 @@ impl SqlxAcquire for SqliteDatabase {
     type DB = Sqlite;
 
     async fn acquire(&self) -> anyhow::Result<PoolConnection<Self::DB>> {
-        Ok(self.acquire().await?)
+        Ok(self.pool_connection.acquire().await?)
     }
 }
