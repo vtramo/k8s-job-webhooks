@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use futures_util::stream;
 use futures_util::StreamExt;
 use moka::sync::Cache;
+use sqlx::Acquire;
 use uuid::Uuid;
 
 use crate::models::{JobDoneWatcher, JobDoneWatcherStatus};
@@ -188,6 +189,69 @@ impl JobDoneWatcherRepository for SqliteDatabase {
     }
 
     async fn create_watcher(&self, job_done_watcher: &JobDoneWatcher) -> anyhow::Result<()> {
-        todo!()
+        let mut conn = self.acquire()
+            .await
+            .with_context(|| "Unable to acquire a database connection".to_string())?;
+
+        let mut tx = conn.begin().await?;
+
+        let job_done_watcher_id = job_done_watcher.id.to_string();
+        let job_done_watcher_job_name = job_done_watcher.job_name.clone();
+        let job_done_watcher_timeout_seconds = job_done_watcher.timeout_seconds;
+        let job_done_watcher_status = job_done_watcher.status.to_string();
+        let job_done_watcher_created_at = job_done_watcher.created_at
+            .date_naive()
+            .and_time(job_done_watcher.created_at.time());
+
+        sqlx::query!(
+            r#"
+                INSERT INTO job_done_watchers ( id, job_name, timeout_seconds, status, created_at )
+                VALUES ( ?1, ?2, ?3, ?4, ?5 )
+            "#,
+            job_done_watcher_id,
+            job_done_watcher_job_name,
+            job_done_watcher_timeout_seconds,
+            job_done_watcher_status,
+            job_done_watcher_created_at
+        ).execute(&mut *tx)
+         .await?;
+
+
+        let trigger_webhook_values: Vec<_> = job_done_watcher
+            .job_done_trigger_webhooks
+            .iter()
+            .map(|job_done_trigger_webhook| {
+                (
+                    job_done_trigger_webhook.id.to_string(),
+                    job_done_trigger_webhook.webhook_id.to_string(),
+                    job_done_watcher_id.clone(),
+                    job_done_trigger_webhook.timeout_seconds,
+                    job_done_trigger_webhook.status.to_string(),
+                )
+            })
+            .collect();
+
+        if !trigger_webhook_values.is_empty() {
+            let mut query_builder = sqlx::QueryBuilder::new(
+            "INSERT INTO job_done_trigger_webhooks (id, webhook_id, job_done_watcher_id, timeout_seconds, status)"
+            );
+
+            query_builder.push_values(
+                trigger_webhook_values,
+                |mut builder, (id, webhook_id, job_done_watcher_id, timeout_seconds, status)| {
+                    builder.push_bind(id)
+                        .push_bind(webhook_id)
+                        .push_bind(job_done_watcher_id)
+                        .push_bind(timeout_seconds)
+                        .push_bind(status);
+                }
+            );
+
+            query_builder.build().execute(&mut *tx).await?;
+        }
+
+        tx.commit().await?;
+
+        Ok(())
     }
 }
