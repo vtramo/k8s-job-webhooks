@@ -132,26 +132,11 @@ impl JobDoneWatcherRepository for SqliteDatabase {
             .await
             .with_context(|| "Unable to acquire a database connection".to_string())?;
 
-        let job_done_watcher_entities: Vec<JobDoneWatcherEntity> = sqlx::query_as!(JobDoneWatcherEntity, r#"
-            SELECT
-                job_done_watchers.id,
-                job_done_watchers.job_name,
-                job_done_watchers.timeout_seconds,
-                job_done_watchers.status,
-                job_done_watchers.created_at,
-                coalesce(json_group_array(json_object(
-                    'id', job_done_trigger_webhooks.id,
-                    'webhook_id', job_done_trigger_webhooks.webhook_id,
-                    'timeout_seconds', job_done_trigger_webhooks.timeout_seconds,
-                    'status', job_done_trigger_webhooks.status,
-                    'called_at', job_done_trigger_webhooks.called_at)), json_object()) AS "job_done_trigger_webhooks!: String"
-            FROM
-                job_done_watchers
-            LEFT JOIN
-                job_done_trigger_webhooks ON job_done_watchers.id = job_done_trigger_webhooks.job_done_watcher_id
-            GROUP BY
-                job_done_watchers.id
-        "#).fetch_all(&mut *conn).await?;
+
+        let job_done_watcher_entities: Vec<JobDoneWatcherEntity> =
+            sqlx::query_file_as!(JobDoneWatcherEntity, "queries/sqlite/find_all_watchers.sql")
+                .fetch_all(&mut *conn)
+                .await?;
 
         Ok(job_done_watcher_entities.into_iter().map(JobDoneWatcher::from).collect())
     }
@@ -162,28 +147,9 @@ impl JobDoneWatcherRepository for SqliteDatabase {
             .with_context(|| "Unable to acquire a database connection".to_string())?;
 
         let id = id.to_string();
-        let job_done_watcher_entity: Option<JobDoneWatcherEntity> = sqlx::query_as!(JobDoneWatcherEntity, r#"
-            SELECT
-                job_done_watchers.id,
-                job_done_watchers.job_name,
-                job_done_watchers.timeout_seconds,
-                job_done_watchers.status,
-                job_done_watchers.created_at,
-                coalesce(json_group_array(json_object(
-                    'id', job_done_trigger_webhooks.id,
-                    'webhook_id', job_done_trigger_webhooks.webhook_id,
-                    'timeout_seconds', job_done_trigger_webhooks.timeout_seconds,
-                    'status', job_done_trigger_webhooks.status,
-                    'called_at', job_done_trigger_webhooks.called_at)), json_object()) AS "job_done_trigger_webhooks!: String"
-            FROM
-                job_done_watchers
-            LEFT JOIN
-                job_done_trigger_webhooks ON job_done_watchers.id = job_done_trigger_webhooks.job_done_watcher_id
-            WHERE
-                job_done_watchers.id = ?
-            GROUP BY
-                job_done_watchers.id
-        "#, id).fetch_optional(&mut *conn).await?;
+        let job_done_watcher_entity: Option<JobDoneWatcherEntity> =
+            sqlx::query_file_as!(JobDoneWatcherEntity, "queries/sqlite/find_watcher_by_id.sql", id)
+                .fetch_optional(&mut *conn).await?;
 
         Ok(job_done_watcher_entity.map(JobDoneWatcher::from))
     }
@@ -203,11 +169,7 @@ impl JobDoneWatcherRepository for SqliteDatabase {
             .date_naive()
             .and_time(job_done_watcher.created_at.time());
 
-        sqlx::query!(
-            r#"
-                INSERT INTO job_done_watchers ( id, job_name, timeout_seconds, status, created_at )
-                VALUES ( ?1, ?2, ?3, ?4, ?5 )
-            "#,
+        sqlx::query_file!("queries/sqlite/insert_job_done_watcher.sql",
             job_done_watcher_id,
             job_done_watcher_job_name,
             job_done_watcher_timeout_seconds,
@@ -233,7 +195,7 @@ impl JobDoneWatcherRepository for SqliteDatabase {
 
         if !trigger_webhook_values.is_empty() {
             let mut query_builder = sqlx::QueryBuilder::new(
-            "INSERT INTO job_done_trigger_webhooks (id, webhook_id, job_done_watcher_id, timeout_seconds, status)"
+                "INSERT INTO job_done_trigger_webhooks (id, webhook_id, job_done_watcher_id, timeout_seconds, status)"
             );
 
             query_builder.push_values(
