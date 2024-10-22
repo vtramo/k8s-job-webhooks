@@ -75,6 +75,7 @@ pub enum JobDoneWatcherStatusEntity {
     Completed,
     PartiallyCompleted,
     Pending,
+    Processing,
     Cancelled,
     Failed,
     Timeout,
@@ -89,6 +90,7 @@ impl Display for JobDoneWatcherStatusEntity {
             JobDoneWatcherStatusEntity::Cancelled => "Cancelled".to_string(),
             JobDoneWatcherStatusEntity::Failed => "Failed".to_string(),
             JobDoneWatcherStatusEntity::Timeout => "Timeout".to_string(),
+            JobDoneWatcherStatusEntity::Processing => "Processing".to_string(),
         };
         write!(f, "{}", str)
     }
@@ -116,7 +118,8 @@ impl From<String> for JobDoneWatcherStatusEntity {
             "Cancelled" => JobDoneWatcherStatusEntity::Cancelled,
             "Failed" => JobDoneWatcherStatusEntity::Failed,
             "Timeout" => JobDoneWatcherStatusEntity::Timeout,
-            _ => panic!()
+            "Processing" => JobDoneWatcherStatusEntity::Processing,
+            _ => panic!("From<String> JobDoneWatcherStatusEntity"),
         }
     }
 }

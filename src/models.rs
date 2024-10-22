@@ -35,7 +35,7 @@ impl From<&WebhookEntity> for Webhook {
             url: Url(url::Url::parse(&webhook_entity.url).expect("url should be correct!")),
             request_body: webhook_entity.request_body.clone(),
             description: webhook_entity.description.clone(),
-            created_at: webhook_entity.created_at.and_utc(),
+            created_at: webhook_entity.created_at,
         }
     }
 }
@@ -47,7 +47,7 @@ impl From<WebhookEntity> for Webhook {
             url: Url(url::Url::parse(&webhook_entity.url).expect("url should be correct!")),
             request_body: webhook_entity.request_body,
             description: webhook_entity.description,
-            created_at: webhook_entity.created_at.and_utc(),
+            created_at: webhook_entity.created_at,
         }
     }
 }
@@ -81,7 +81,7 @@ impl From<&JobDoneTriggerWebhookEntity> for JobDoneTriggerWebhook {
             webhook_id: Uuid::parse_str(&job_done_trigger_webhook_entity.webhook_id).expect("Uuid from db should be correct!"),
             timeout_seconds: job_done_trigger_webhook_entity.timeout_seconds as u32,
             status: (&job_done_trigger_webhook_entity.status).into(),
-            called_at: job_done_trigger_webhook_entity.called_at.map(|naive_date_time| naive_date_time.and_utc()),
+            called_at: job_done_trigger_webhook_entity.called_at.map(|naive_date_time| naive_date_time),
         }
     }
 }
@@ -163,7 +163,7 @@ impl From<JobDoneWatcherEntity> for JobDoneWatcher {
             job_name: job_done_watcher_entity.job_name,
             timeout_seconds: job_done_watcher_entity.timeout_seconds as u32,
             status: job_done_watcher_entity.status.into(),
-            created_at: job_done_watcher_entity.created_at.and_utc(),
+            created_at: job_done_watcher_entity.created_at,
             job_done_trigger_webhooks: job_done_watcher_entity.job_done_trigger_webhooks.iter().map(JobDoneTriggerWebhook::from).collect(),
         }
     }
@@ -176,6 +176,7 @@ pub enum JobDoneWatcherStatus {
     Completed,
     PartiallyCompleted,
     Pending,
+    Processing,
     Cancelled,
     Failed,
     Timeout,
@@ -190,6 +191,7 @@ impl fmt::Display for JobDoneWatcherStatus {
             JobDoneWatcherStatus::Cancelled => "Cancelled",
             JobDoneWatcherStatus::Failed => "Failed",
             JobDoneWatcherStatus::Timeout => "Timeout",
+            JobDoneWatcherStatus::Processing => "Processing",
         };
         write!(f, "{}", status_str)
     }
@@ -205,6 +207,7 @@ impl From<JobDoneWatcherStatusEntity> for JobDoneWatcherStatus {
             JobDoneWatcherStatusEntity::Cancelled => JobDoneWatcherStatus::Cancelled,
             JobDoneWatcherStatusEntity::Failed => JobDoneWatcherStatus::Failed,
             JobDoneWatcherStatusEntity::Timeout => JobDoneWatcherStatus::Timeout,
+            JobDoneWatcherStatusEntity::Processing => JobDoneWatcherStatus::Processing,
         }
     }
 }

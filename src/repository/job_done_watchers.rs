@@ -1,22 +1,22 @@
-use std::future::Future;
 use std::ops::Deref;
 use std::sync::{Arc, OnceLock};
 
 use anyhow::{anyhow, Context};
 use async_rwlock::RwLock;
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use futures_util::stream;
 use futures_util::StreamExt;
 use moka::sync::Cache;
 use sqlx::Acquire;
 use uuid::Uuid;
 
-use crate::models::{JobDoneWatcher, JobDoneWatcherStatus};
+use crate::models::{JobDoneTriggerWebhookStatus, JobDoneWatcher, JobDoneWatcherStatus};
 use crate::models::entity::JobDoneWatcherEntity;
-use crate::repository::{AsyncLockGuard, SqliteDatabase, SqlxAcquire};
+use crate::repository::{SqliteDatabase, SqlxAcquire};
 
 #[async_trait]
-pub trait JobDoneWatcherRepository: AsyncLockGuard<JobDoneWatcher> + Send + Sync {
+pub trait JobDoneWatcherRepository: Send + Sync {
     async fn find_all_watchers_by_job_name_and_status(
         &self,
         job_name: &str, // TODO: newtype pattern
@@ -26,12 +26,25 @@ pub trait JobDoneWatcherRepository: AsyncLockGuard<JobDoneWatcher> + Send + Sync
     async fn find_watcher_by_id(&self, id: &Uuid) -> anyhow::Result<Option<JobDoneWatcher>>;
     async fn create_watcher(&self, job_done_watcher: &JobDoneWatcher) -> anyhow::Result<()>;
     async fn update_watcher_status(&self, id: &Uuid, job_done_watcher_status: JobDoneWatcherStatus) -> anyhow::Result<()>;
+    async fn update_watcher_status_by_status(
+        &self,
+        id: &Uuid,
+        status: JobDoneWatcherStatus,
+        new_status: JobDoneWatcherStatus
+    ) -> anyhow::Result<()>;
     async fn update_watchers_status_by_job_name_and_status(
         &self,
         job_name: &str, // TODO: newtype pattern
         status: JobDoneWatcherStatus,
         new_status: JobDoneWatcherStatus
     ) -> anyhow::Result<Vec<JobDoneWatcher>>;
+    async fn update_job_done_trigger_webhook_status_and_called_at(
+        &self,
+        id: &Uuid,
+        job_done_trigger_webhook_id: &Uuid,
+        job_done_trigger_webhook_status: JobDoneTriggerWebhookStatus,
+        job_done_trigger_webhook_called_at: DateTime<Utc>,
+    ) -> anyhow::Result<()>;
 }
 
 pub static JOB_DONE_WATCHER_REPOSITORY: OnceLock<Arc<dyn JobDoneWatcherRepository>> = OnceLock::new();
@@ -55,15 +68,6 @@ impl InMemoryJobDoneWatcherRepository {
         Self {
             job_done_watcher_by_id: Cache::new(15),
         }
-    }
-}
-
-#[async_trait::async_trait]
-impl AsyncLockGuard<JobDoneWatcher> for InMemoryJobDoneWatcherRepository {
-    async fn lock(&self, id: &Uuid, critical_section: Box<dyn FnOnce(JobDoneWatcher) -> Box<dyn Future<Output=anyhow::Result<()>> + Send> + Send>) -> anyhow::Result<()> {
-        let job_done_watcher = self.job_done_watcher_by_id.get(&id.to_string()).unwrap();
-        let job_done_watcher = job_done_watcher.write().await;
-        Box::into_pin(critical_section(job_done_watcher.clone())).await
     }
 }
 
@@ -126,6 +130,26 @@ impl JobDoneWatcherRepository for InMemoryJobDoneWatcherRepository {
         }
     }
 
+    async fn update_watcher_status_by_status(
+        &self,
+        id: &Uuid,
+        status: JobDoneWatcherStatus,
+        new_status: JobDoneWatcherStatus
+    ) -> anyhow::Result<()> {
+        let id_str = id.to_string();
+        if let Some(job_done_watcher) = self.job_done_watcher_by_id.get(&id_str) {
+            let mut watcher = job_done_watcher.write().await;
+
+            if watcher.status == status {
+                watcher.status = new_status;
+            }
+
+            Ok(())
+        } else {
+            Err(anyhow!("Job Done Watcher with id {} not found!", id_str))
+        }
+    }
+
     async fn update_watchers_status_by_job_name_and_status(
         &self,
         job_name: &str,
@@ -146,15 +170,39 @@ impl JobDoneWatcherRepository for InMemoryJobDoneWatcherRepository {
 
         Ok(updated_watchers)
     }
-}
 
-#[async_trait::async_trait]
-impl AsyncLockGuard<JobDoneWatcher> for SqliteDatabase {
-    async fn lock(&self, id: &Uuid, critical_section: Box<dyn FnOnce(JobDoneWatcher) -> Box<dyn Future<Output=anyhow::Result<()>> + Send> + Send>) -> anyhow::Result<()> {
-        todo!()
+    async fn update_job_done_trigger_webhook_status_and_called_at(
+        &self,
+        id: &Uuid,
+        job_done_trigger_webhook_id: &Uuid,
+        job_done_trigger_webhook_status: JobDoneTriggerWebhookStatus,
+        job_done_trigger_webhook_called_at: DateTime<Utc>
+    ) -> anyhow::Result<()> {
+        let id_str = id.to_string();
+
+        if let Some(job_done_watcher) = self.job_done_watcher_by_id.get(&id_str) {
+            let mut watcher = job_done_watcher.write().await;
+
+            if let Some(trigger_webhook) = watcher
+                .job_done_trigger_webhooks
+                .iter_mut()
+                .find(|wh| wh.id == *job_done_trigger_webhook_id)
+            {
+                trigger_webhook.status = job_done_trigger_webhook_status;
+                trigger_webhook.called_at = Some(job_done_trigger_webhook_called_at);
+                Ok(())
+            } else {
+                Err(anyhow!(
+                    "Job Done Trigger Webhook with id {} not found for Job Done Watcher {}",
+                    job_done_trigger_webhook_id,
+                    id
+                ))
+            }
+        } else {
+            Err(anyhow!("Job Done Watcher with id {} not found!", id))
+        }
     }
 }
-
 
 #[async_trait::async_trait]
 impl JobDoneWatcherRepository for SqliteDatabase {
@@ -190,6 +238,8 @@ impl JobDoneWatcherRepository for SqliteDatabase {
                 .fetch_all(&mut *conn)
                 .await?;
 
+        println!("{:#?}", job_done_watcher_entities);
+
         Ok(job_done_watcher_entities.into_iter().map(JobDoneWatcher::from).collect())
     }
 
@@ -217,9 +267,7 @@ impl JobDoneWatcherRepository for SqliteDatabase {
         let job_done_watcher_job_name = job_done_watcher.job_name.clone();
         let job_done_watcher_timeout_seconds = job_done_watcher.timeout_seconds;
         let job_done_watcher_status = job_done_watcher.status.to_string();
-        let job_done_watcher_created_at = job_done_watcher.created_at
-            .date_naive()
-            .and_time(job_done_watcher.created_at.time());
+        let job_done_watcher_created_at = job_done_watcher.created_at;
 
         sqlx::query_file!("queries/sqlite/insert_job_done_watcher.sql",
             job_done_watcher_id,
@@ -285,6 +333,28 @@ impl JobDoneWatcherRepository for SqliteDatabase {
         Ok(())
     }
 
+    async fn update_watcher_status_by_status(
+        &self,
+        id: &Uuid,
+        status: JobDoneWatcherStatus,
+        new_status: JobDoneWatcherStatus
+    ) -> anyhow::Result<()> {
+        let mut conn = self.acquire()
+            .await
+            .with_context(|| "Unable to acquire a database connection".to_string())?;
+
+        let mut tx = conn.begin().await?;
+
+        let id = id.to_string();
+        let status = status.to_string();
+        let new_status = new_status.to_string();
+        let _ = sqlx::query_file!("queries/sqlite/update_watcher_status_by_status.sql", id, status, new_status).execute(&mut *tx).await?;
+
+        tx.commit().await?;
+
+        Ok(())
+    }
+
     async fn update_watchers_status_by_job_name_and_status(
         &self,
         job_name: &str, // TODO: newtype pattern
@@ -319,7 +389,7 @@ impl JobDoneWatcherRepository for SqliteDatabase {
         let updated_job_done_watchers: Vec<JobDoneWatcher> = sqlx::query_file_as!(
             JobDoneWatcherEntity,
             "queries/sqlite/find_all_watchers_by_job_name_and_status.sql",
-            job_name, status
+            job_name, new_status
         ).fetch_all(&mut *tx).await?
             .into_iter()
             .filter(|job_done_watcher| ids.contains(&job_done_watcher.id))
@@ -329,5 +399,34 @@ impl JobDoneWatcherRepository for SqliteDatabase {
         tx.commit().await?;
 
         Ok(updated_job_done_watchers)
+    }
+
+    async fn update_job_done_trigger_webhook_status_and_called_at(
+        &self,
+        id: &Uuid,
+        job_done_trigger_webhook_id: &Uuid,
+        job_done_trigger_webhook_status: JobDoneTriggerWebhookStatus,
+        job_done_trigger_webhook_called_at: DateTime<Utc>
+    ) -> anyhow::Result<()> {
+        let mut conn = self.acquire()
+            .await
+            .with_context(|| "Unable to acquire a database connection".to_string())?;
+
+        let id = id.to_string();
+        let job_done_trigger_webhook_id = job_done_trigger_webhook_id.to_string();
+        let job_done_trigger_webhook_status = job_done_trigger_webhook_status.to_string();
+        let called_at = job_done_trigger_webhook_called_at;
+        println!("called_at {} utc {}", called_at, job_done_trigger_webhook_called_at);
+        sqlx::query!(r#"
+            UPDATE job_done_trigger_webhooks
+            SET (status, called_at) = (?3, ?4)
+            WHERE
+                job_done_trigger_webhooks.id = ?2
+            AND
+                job_done_trigger_webhooks.job_done_watcher_id = ?1
+        "#, id, job_done_trigger_webhook_id, job_done_trigger_webhook_status, called_at)
+            .execute(&mut *conn).await?;
+
+        Ok(())
     }
 }

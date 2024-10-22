@@ -20,11 +20,13 @@ pub async fn watch_jobs() {
 
     while let Some(job) = stream.try_next().await.unwrap() {
         if is_already_scanned_job(job.labels()) {
+            println!("is_already_scanned_job");
             continue;
         }
 
         if let Some((job_name, job_status)) = job.name().zip(job.clone().status) {
             if !is_successfully_completed_job(job_status) {
+                println!("!is_successfully_completed_job {}", job_name);
                 continue;
             }
 

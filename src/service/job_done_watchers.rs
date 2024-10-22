@@ -26,7 +26,7 @@ pub async fn create_job_done_watcher(job_done_watcher: CreateJobDoneWatcherReque
         timeout_seconds: job_done_watcher.timeout_seconds,
         job_done_trigger_webhooks,
         status: JobDoneWatcherStatus::Pending,
-        created_at: Default::default(),
+        created_at: Utc::now(),
     };
 
     if job_done_watcher.timeout_seconds > 0 {
@@ -50,20 +50,7 @@ fn start_timer_job_done_watcher(job_done_watcher_id: &Uuid, timeout_secs: u64) {
         println!("Timeout {} for {}", timeout_secs, job_done_watcher_id);
 
         let job_done_watcher_repository = repository::get_job_done_watcher_repository();
-        let timeout_result = job_done_watcher_repository.lock(&job_done_watcher_id,
-          Box::new(|mut job_done_watcher| Box::new(async move {
-              if job_done_watcher.status == JobDoneWatcherStatus::Pending {
-                  job_done_watcher.status = JobDoneWatcherStatus::Timeout;
-                  job_done_watcher.job_done_trigger_webhooks
-                      .iter_mut()
-                      .for_each(|job_done_trigger_webhook|
-                          job_done_trigger_webhook.status = JobDoneTriggerWebhookStatus::Timeout);
-                  let job_done_watcher_repository = repository::get_job_done_watcher_repository();
-                  job_done_watcher_repository.create_watcher(&job_done_watcher).await?;
-              }
-
-              Ok(())
-          }))).await;
+        let timeout_result = job_done_watcher_repository.update_watcher_status(&job_done_watcher_id, JobDoneWatcherStatus::Timeout).await;
 
         match timeout_result {
             Ok(_) => {}
@@ -71,7 +58,6 @@ fn start_timer_job_done_watcher(job_done_watcher_id: &Uuid, timeout_secs: u64) {
         };
     });
 }
-
 
 pub async fn get_job_done_watchers() -> anyhow::Result<Vec<JobDoneWatcher>> {
     let job_done_watcher_repository = repository::get_job_done_watcher_repository();
@@ -84,64 +70,55 @@ pub async fn get_job_done_watcher_by_id(job_done_watcher_id: &Uuid) -> anyhow::R
 }
 
 pub async fn notify_job_done_watchers(job_name: &str) {
-    let mut pending_job_done_watchers = match find_pending_job_done_watchers(job_name).await {
-        Ok(pending_job_done_watchers) => pending_job_done_watchers,
-        Err(error) => {
-            eprintln!("Unable to notify watchers of job {}: {:#?}", job_name, error);
-            return;
-        }
-    };
+    println!("notify_job_done_watchers {}", job_name);
+    let job_done_watcher_repository = repository::get_job_done_watcher_repository();
+    let job_done_watchers =
+        match job_done_watcher_repository.update_watchers_status_by_job_name_and_status(
+            job_name,
+            JobDoneWatcherStatus::Pending,
+            JobDoneWatcherStatus::Processing
+        ).await {
+            Ok(updated_job_done_watchers) => updated_job_done_watchers,
+            Err(error) => {
+                eprintln!("Unable to notify job watchers (job name {}): {:?}", job_name, error);
+                return;
+            }
+        };
 
-    let pending_job_done_watcher_ids: Vec<_> = pending_job_done_watchers
-        .iter_mut()
-        .map(|job_done_watcher| job_done_watcher.id.clone())
-        .collect();
-
-    stream::iter(pending_job_done_watcher_ids.iter())
-        .map(|active_job_done_watcher_id| process_job_done_watcher(active_job_done_watcher_id))
+    println!("update_watchers_status_by_job_name_and_status {}", job_name);
+    println!("job_done_watchers {}", job_done_watchers.len());
+    stream::iter(job_done_watchers.into_iter())
+        .map(|job_done_watcher| call_job_done_trigger_webhooks(job_done_watcher))
         .buffer_unordered(10)
-        .collect::<Vec<anyhow::Result<String>>>()
+        .collect::<Vec<anyhow::Result<JobDoneWatcher>>>()
         .await
         .iter()
         .for_each(|result| {
             match result {
-                Ok(job_done_watcher_id) => println!("Job Done Watcher {} notified!", job_done_watcher_id),
+                Ok(job_done_watcher) => println!("Job Done Watcher {} notified!", job_done_watcher.id),
                 Err(error) => eprintln!("Error Job Done Watcher {:#?}", error),
             }
         });
 }
 
-async fn find_pending_job_done_watchers(job_name: &str) -> anyhow::Result<Vec<JobDoneWatcher>> {
-    let job_done_watcher_repository = repository::get_job_done_watcher_repository();
-
-    job_done_watcher_repository.find_all_watchers_by_job_name_and_status(
-        job_name,
-        JobDoneWatcherStatus::Pending).await
-}
-
-async fn process_job_done_watcher(job_done_watcher_id: &Uuid) -> anyhow::Result<String> {
-    let job_done_watcher_repository = repository::get_job_done_watcher_repository();
-
-    job_done_watcher_repository.lock(job_done_watcher_id,
-        Box::new(|job_done_watcher| {
-            if job_done_watcher.status == JobDoneWatcherStatus::Pending {
-                Box::new(call_job_done_trigger_webhooks(job_done_watcher))
-            } else {
-                Box::new(async { Ok(()) })
-            }
-        }))
-        .await?;
-
-    Ok(job_done_watcher_id.to_string())
-}
-
-async fn call_job_done_trigger_webhooks(mut job_done_watcher: JobDoneWatcher) -> anyhow::Result<()> {
+async fn call_job_done_trigger_webhooks(mut job_done_watcher: JobDoneWatcher) -> anyhow::Result<JobDoneWatcher> {
+    println!("calling webhooks {:?}", job_done_watcher);
     let job_done_trigger_webhooks = &mut job_done_watcher.job_done_trigger_webhooks;
     let total_webhooks = job_done_trigger_webhooks.len();
 
     let call_webhook_tasks: Vec<_> = job_done_trigger_webhooks
         .iter_mut()
-        .map(|webhook| call_job_done_trigger_webhook(webhook))
+        .map(|webhook| async {
+            let result = call_job_done_trigger_webhook(webhook).await;
+            let job_done_watcher_repository = repository::get_job_done_watcher_repository();
+            job_done_watcher_repository.update_job_done_trigger_webhook_status_and_called_at(
+                &job_done_watcher.id,
+                &webhook.id,
+                webhook.status,
+                webhook.called_at.expect("Should be not empty"),
+            ).await?;
+            result
+        })
         .collect();
 
     let call_webhook_results: Vec<_> = join_all(call_webhook_tasks).await;
@@ -167,7 +144,8 @@ async fn call_job_done_trigger_webhooks(mut job_done_watcher: JobDoneWatcher) ->
     job_done_watcher.set_status(job_done_watcher_status);
 
     let job_done_watcher_repository = repository::get_job_done_watcher_repository();
-    job_done_watcher_repository.create_watcher(&job_done_watcher).await
+    job_done_watcher_repository.update_watcher_status(&job_done_watcher.id, job_done_watcher_status).await?;
+    Ok(job_done_watcher)
 }
 
 async fn call_job_done_trigger_webhook(job_done_trigger_webhook: &mut JobDoneTriggerWebhook) -> anyhow::Result<bool> {
