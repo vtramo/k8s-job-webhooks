@@ -12,6 +12,10 @@ use crate::service;
 
 const K8S_WEBHOOKS_CALLED_LABEL: &'static str = "app.k8s.job.webhooks/webhooks-called";
 
+pub fn spawn_k8s_job_watcher() {
+    actix_web::rt::spawn(watch_jobs());
+}
+
 pub async fn watch_jobs() {
     log::info!("Starting K8S watch jobs...");
 
