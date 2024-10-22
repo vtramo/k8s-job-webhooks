@@ -5,11 +5,13 @@ use actix_web::{App, HttpServer, web};
 use actix_web::middleware::Logger;
 use futures_util::stream;
 use futures_util::StreamExt;
+use sqlx::sqlite::SqlitePoolOptions;
 use yaml_rust2::YamlLoader;
 
 use crate::{controller, repository, service};
 use crate::controller::IdempotencyMap;
 use crate::models::JobFamilyWatcher;
+use crate::repository::SqlxAcquire;
 
 pub fn init_logging() -> anyhow::Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
@@ -25,14 +27,41 @@ pub async fn init_database() -> anyhow::Result<()> {
 
     match database {
         "sqlite" => {
-            let repository = repository::SqliteDatabase::connect(&database_url).await?;
+
+            let repository = if is_in_memory_sqlite(&database_url) {
+                let repository = repository::SqliteDatabase::connect_in_memory(&database_url).await?;
+                log::info!("Running migrations for in-memory SQLite database...");
+
+                let mut conn = repository.acquire().await?;
+                sqlx::migrate!("migrations/sqlite")
+                    .run(&mut *conn)
+                    .await?;
+
+                log::info!("Migrations completed successfully.");
+                repository
+            } else {
+                repository::SqliteDatabase::connect(&database_url).await?
+            };
+
             repository::set_webhook_repository(repository.clone());
             repository::set_job_done_watcher_repository(repository.clone());
             repository::set_job_family_watcher_repository(repository);
+
             Ok(())
         },
         _ => Err(anyhow::anyhow!("Unsupported database: {}", database))
     }
+}
+
+fn is_in_memory_sqlite(url: &str) -> bool {
+    const URL_IN_MEMORY: [&str; 4] = [
+        "sqlite::memory:",
+        "sqlite://:memory:",
+        "sqlite:",
+        "sqlite://",
+    ];
+
+    URL_IN_MEMORY.contains(&url)
 }
 
 pub async fn parse_job_family_watchers_config_file() -> anyhow::Result<()> {
