@@ -1,5 +1,6 @@
 use std::fmt::{Display, Formatter};
 use std::ops::Deref;
+use chrono::Utc;
 
 use k8s_openapi::serde_json;
 use serde::Deserialize;
@@ -10,7 +11,7 @@ pub struct WebhookEntity {
     pub url: String,
     pub request_body: String,
     pub description: String,
-    pub created_at: chrono::NaiveDateTime,
+    pub created_at: chrono::DateTime<Utc>,
 }
 
 #[derive(Clone, Debug, sqlx::FromRow)]
@@ -19,7 +20,7 @@ pub struct JobDoneWatcherEntity {
     pub job_name: String,
     pub timeout_seconds: i64,
     pub status: JobDoneWatcherStatusEntity,
-    pub created_at: chrono::NaiveDateTime,
+    pub created_at: chrono::DateTime<Utc>,
     pub job_done_trigger_webhooks: JobDoneTriggerWebhooksEntity,
 }
 
@@ -29,7 +30,7 @@ pub struct JobDoneTriggerWebhookEntity {
     pub webhook_id: String,
     pub timeout_seconds: i64,
     pub status: JobDoneTriggerWebhookStatusEntity,
-    pub called_at: Option<chrono::NaiveDateTime>,
+    pub called_at: Option<chrono::DateTime<Utc>>,
 }
 
 #[derive(Clone, Debug)]
@@ -49,7 +50,11 @@ impl From<String> for JobDoneTriggerWebhooksEntity {
             return JobDoneTriggerWebhooksEntity(vec![])
         }
 
-        let result: Vec<JobDoneTriggerWebhookEntity> = serde_json::from_str(&value).unwrap_or(vec![]);
+        let result: Vec<JobDoneTriggerWebhookEntity> =
+            serde_json::from_str(&value).unwrap_or_else(|err| {
+                println!("error {:?}", err);
+                vec![]
+            });
         JobDoneTriggerWebhooksEntity(result)
     }
 }

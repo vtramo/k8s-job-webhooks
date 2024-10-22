@@ -64,7 +64,7 @@ impl WebhookRepository for SqliteDatabase {
             .await
             .with_context(|| "Unable to acquire a database connection".to_string())?;
 
-        let webhook_entities: Vec<WebhookEntity> = sqlx::query_as!(WebhookEntity, "SELECT * FROM webhooks")
+        let webhook_entities: Vec<WebhookEntity> = sqlx::query_file_as!(WebhookEntity, "queries/sqlite/find_all_webhooks.sql")
             .fetch_all(&mut *conn)
             .await?;
 
@@ -77,7 +77,7 @@ impl WebhookRepository for SqliteDatabase {
             .with_context(|| "Unable to acquire a database connection".to_string())?;
 
         let uuid = uuid.to_string();
-        Ok(sqlx::query_as!(WebhookEntity, "SELECT * FROM webhooks WHERE id = ?1", uuid)
+        Ok(sqlx::query_file_as!(WebhookEntity, "queries/sqlite/find_webhook_by_id.sql", uuid)
             .fetch_optional(&mut *conn)
             .await?
             .map(Webhook::from))
