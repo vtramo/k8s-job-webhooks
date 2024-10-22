@@ -7,10 +7,12 @@ pub use job_done_watchers::set_job_done_watcher_repository;
 pub use webhooks::get_webhook_repository;
 pub use webhooks::InMemoryWebhookRepository;
 pub use webhooks::set_webhook_repository;
+pub use job_family_watcher::get_job_family_watcher_repository;
+pub use job_family_watcher::set_job_family_watcher_repository;
 
 mod webhooks;
 mod job_done_watchers;
-
+mod job_family_watcher;
 
 #[derive(Clone)]
 pub struct SqliteDatabase {

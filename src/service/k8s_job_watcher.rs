@@ -44,6 +44,8 @@ pub async fn watch_jobs() {
             log::info!("Job {} successfully completed, notifying watchers...", job_name);
             service::job_done_watchers::notify_job_done_watchers(&job_name).await;
 
+            notify_job_family_watchers(&job).await;
+
             log::info!("Adding label to indicate webhooks have been called for job: {}", job_name);
 
             if let Err(err) = add_webhooks_called_label(&jobs, &job_name).await {
@@ -72,6 +74,18 @@ fn is_successfully_completed_job(job_status: JobStatus) -> bool {
             last_job_condition.status == JOB_CONDITION_STATUS_TRUE &&
                 last_job_condition.type_  == JOB_CONDITION_TYPE_COMPLETE)
         .unwrap_or(false)
+}
+
+async fn notify_job_family_watchers(job: &Job) {
+    let job_name = job.name().expect("Should be present!");
+
+    if let Some(job_owner_reference) = job.owner_references().get(0) {
+        if job_owner_reference.kind == "CronJob" {
+            let cronjob = job_owner_reference.name.clone();
+            log::info!("Job '{}' belongs to a CronJob ({}), successfully completed. Notifying job family watchers...", job_name, cronjob);
+            service::job_family_watcher::notify_job_family_watchers(&cronjob).await;
+        }
+    }
 }
 
 async fn add_webhooks_called_label(job_api: &Api<Job>, job_name: &str) -> Result<Job, kube::Error> {

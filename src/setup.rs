@@ -1,9 +1,15 @@
 use std::env;
+use std::fs::read_to_string;
+
 use actix_web::{App, HttpServer, web};
 use actix_web::middleware::Logger;
-use crate::controller::IdempotencyMap;
+use futures_util::stream;
+use futures_util::StreamExt;
+use yaml_rust2::YamlLoader;
 
-use crate::{controller, repository};
+use crate::{controller, repository, service};
+use crate::controller::IdempotencyMap;
+use crate::models::JobFamilyWatcher;
 
 pub fn init_logging() -> anyhow::Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
@@ -21,11 +27,61 @@ pub async fn init_database() -> anyhow::Result<()> {
         "sqlite" => {
             let repository = repository::SqliteDatabase::connect(&database_url).await?;
             repository::set_webhook_repository(repository.clone());
-            repository::set_job_done_watcher_repository(repository);
+            repository::set_job_done_watcher_repository(repository.clone());
+            repository::set_job_family_watcher_repository(repository);
             Ok(())
         },
         _ => Err(anyhow::anyhow!("Unsupported database: {}", database))
     }
+}
+
+pub async fn parse_job_family_watchers_config_file() -> anyhow::Result<()> {
+    if let Ok(job_family_watchers_config_file) = env::var("JOB_FAMILY_WATCHERS_CONFIG_FILE") {
+        log::info!("Attempting to read job family watchers config file: {}", job_family_watchers_config_file);
+
+        let content = read_to_string(&job_family_watchers_config_file).map_err(|err| {
+            log::warn!("Failed to read config file: {}. Error: {}", job_family_watchers_config_file, err);
+            anyhow::anyhow!("Failed to read config file: {}", err)
+        })?;
+
+        log::info!("Successfully read config file. Parsing YAML content...");
+
+        let roots = YamlLoader::load_from_str(&content).map_err(|err| {
+            log::error!("Failed to parse YAML from config file. Error: {}", err);
+            anyhow::anyhow!("Failed to parse YAML: {}", err)
+        })?;
+
+        let mut job_family_watchers: Vec<JobFamilyWatcher> = Vec::with_capacity(10);
+        for root in roots {
+            for object in root {
+                let job_family_watcher = JobFamilyWatcher::try_from(object).map_err(|err| {
+                    log::error!("Failed to convert object to JobFamilyWatcher. Error: {}", err);
+                    anyhow::anyhow!("Failed to convert object to JobFamilyWatcher: {}", err)
+                })?;
+                job_family_watchers.push(job_family_watcher);
+            }
+        }
+
+        if !job_family_watchers.is_empty() {
+            log::info!("Creating job family watchers in the service... TOT: {}", job_family_watchers.len());
+        } else {
+            log::info!("No job family watchers to create.");
+        }
+
+        stream::iter(job_family_watchers.into_iter())
+            .for_each(|job_family_watcher| {
+                async move {
+                    if let Err(err) = service::job_family_watcher::create_job_family_watcher(job_family_watcher.clone()).await {
+                        log::error!("Failed to create job family watcher: {:?}. Error: {}", job_family_watcher, err);
+                    }
+                }
+            })
+            .await;
+    } else {
+        log::warn!("Environment variable JOB_FAMILY_WATCHERS_CONFIG_FILE is not set.");
+    }
+
+    Ok(())
 }
 
 pub async fn init_http_server() -> anyhow::Result<()> {

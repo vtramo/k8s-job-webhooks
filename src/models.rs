@@ -5,8 +5,9 @@ use chrono::{DateTime, Utc};
 use k8s_openapi::serde::Deserialize;
 use serde::{Deserializer, Serialize, Serializer};
 use uuid::Uuid;
+use yaml_rust2::Yaml;
 
-use crate::models::entity::{JobDoneTriggerWebhookEntity, JobDoneTriggerWebhookStatusEntity, JobDoneWatcherEntity, JobDoneWatcherStatusEntity, WebhookEntity};
+use crate::models::entity::{JobDoneTriggerWebhookEntity, JobDoneTriggerWebhookStatusEntity, JobDoneWatcherEntity, JobDoneWatcherStatusEntity, JobFamilyWatcherEntity, WebhookEntity};
 
 pub mod entity;
 
@@ -212,8 +213,60 @@ impl From<JobDoneWatcherStatusEntity> for JobDoneWatcherStatus {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct JobFamilyWatcher {
+    pub job_family: String,
+    pub url: Url,
+    pub request_body: String,
+    pub description: String
+}
+
+impl From<JobFamilyWatcherEntity> for JobFamilyWatcher {
+    fn from(job_family_watcher_entity: JobFamilyWatcherEntity) -> Self {
+        JobFamilyWatcher {
+            job_family: job_family_watcher_entity.job_family,
+            url: Url::new(&job_family_watcher_entity.url).expect("Should be correct!"),
+            request_body: job_family_watcher_entity.request_body,
+            description: job_family_watcher_entity.description,
+        }
+    }
+}
+
+impl TryFrom<Yaml> for JobFamilyWatcher {
+    type Error = anyhow::Error;
+
+    fn try_from(yaml: Yaml) -> Result<Self, Self::Error> {
+        let job_family = extract_yaml_string(&yaml, "jobFamily")?;
+        let url = Url::new(&extract_yaml_string(&yaml, "url")?)?;
+        let request_body = extract_yaml_string(&yaml, "requestBody").unwrap_or_default();
+        let description = extract_yaml_string(&yaml, "description").unwrap_or_default();
+
+        Ok(Self {
+            job_family,
+            url,
+            request_body,
+            description,
+        })
+    }
+}
+
+// Helper function to extract a string from Yaml with error handling
+fn extract_yaml_string(yaml: &Yaml, key: &str) -> Result<String, anyhow::Error> {
+    match &yaml[key] {
+        Yaml::String(value) => Ok(value.clone()),
+        _ => Err(anyhow::anyhow!("Missing or invalid value for key: {}", key)),
+    }
+}
+
+
 #[derive(Debug, Clone)]
 pub struct Url(url::Url);
+
+impl Url {
+    pub fn new(url: &str) -> anyhow::Result<Self> {
+        Ok(Url(url::Url::parse(url)?))
+    }
+}
 
 impl Display for Url {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

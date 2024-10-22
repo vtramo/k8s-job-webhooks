@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter};
 use std::ops::Deref;
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use k8s_openapi::serde_json;
 use serde::Deserialize;
 
@@ -122,4 +122,14 @@ impl From<String> for JobDoneWatcherStatusEntity {
             _ => panic!("From<String> JobDoneWatcherStatusEntity"),
         }
     }
+}
+
+#[derive(Clone, Debug, sqlx::FromRow)]
+pub struct JobFamilyWatcherEntity {
+    pub id: String,
+    pub job_family: String,
+    pub url: String,
+    pub request_body: String,
+    pub description: String,
+    pub created_at: DateTime<Utc>,
 }
