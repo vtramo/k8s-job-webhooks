@@ -161,6 +161,7 @@ components:
       enum:
         - COMPLETED
         - PARTIALLY_COMPLETED
+        - PROCESSING
         - PENDING
         - CANCELLED
         - FAILED
