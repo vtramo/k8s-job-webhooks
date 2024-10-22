@@ -25,7 +25,10 @@ pub async fn get_webhooks() -> impl Responder {
 pub async fn get_webhook_by_id(id: web::Path<String>) -> impl Responder {
     let webhook_id = match Uuid::parse_str(id.as_str()) {
         Ok(webhook_id) => webhook_id,
-        Err(_) => return HttpResponse::BadRequest().finish(),
+        Err(_) => {
+            log::warn!("Invalid UUID format: {}", id);
+            return HttpResponse::BadRequest().finish();
+        },
     };
 
     match service::webhooks::get_webhook_by_id(&webhook_id).await {

@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter};
 use std::ops::Deref;
-use chrono::Utc;
 
+use chrono::Utc;
 use k8s_openapi::serde_json;
 use serde::Deserialize;
 
@@ -52,7 +52,7 @@ impl From<String> for JobDoneTriggerWebhooksEntity {
 
         let result: Vec<JobDoneTriggerWebhookEntity> =
             serde_json::from_str(&value).unwrap_or_else(|err| {
-                println!("error {:?}", err);
+                log::error!("Failed to parse JSON: {:?}", err);
                 vec![]
             });
         JobDoneTriggerWebhooksEntity(result)

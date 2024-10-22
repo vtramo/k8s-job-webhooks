@@ -238,8 +238,6 @@ impl JobDoneWatcherRepository for SqliteDatabase {
                 .fetch_all(&mut *conn)
                 .await?;
 
-        println!("{:#?}", job_done_watcher_entities);
-
         Ok(job_done_watcher_entities.into_iter().map(JobDoneWatcher::from).collect())
     }
 
@@ -416,7 +414,6 @@ impl JobDoneWatcherRepository for SqliteDatabase {
         let job_done_trigger_webhook_id = job_done_trigger_webhook_id.to_string();
         let job_done_trigger_webhook_status = job_done_trigger_webhook_status.to_string();
         let called_at = job_done_trigger_webhook_called_at;
-        println!("called_at {} utc {}", called_at, job_done_trigger_webhook_called_at);
         sqlx::query!(r#"
             UPDATE job_done_trigger_webhooks
             SET (status, called_at) = (?3, ?4)

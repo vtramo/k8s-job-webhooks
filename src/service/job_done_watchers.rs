@@ -10,6 +10,8 @@ use crate::{repository, service};
 use crate::models::{CreateJobDoneWatcherRequest, JobDoneTriggerWebhook, JobDoneTriggerWebhookStatus, JobDoneWatcher, JobDoneWatcherStatus};
 
 pub async fn create_job_done_watcher(job_done_watcher: CreateJobDoneWatcherRequest) -> anyhow::Result<JobDoneWatcher> {
+    log::info!("Creating JobDoneWatcher for job: {}", job_done_watcher.job_name);
+
     let job_done_trigger_webhooks: Vec<_> = job_done_watcher.job_done_trigger_webhooks
         .iter()
         .map(|job_done_trigger_webhook| JobDoneTriggerWebhook {
@@ -36,41 +38,51 @@ pub async fn create_job_done_watcher(job_done_watcher: CreateJobDoneWatcherReque
     let job_done_watcher_repository = repository::get_job_done_watcher_repository();
 
     job_done_watcher_repository.create_watcher(&job_done_watcher).await
-        .map(|_| job_done_watcher)
+        .map(|_| {
+            log::info!("Successfully created JobDoneWatcher with ID: {}", job_done_watcher.id);
+            job_done_watcher
+        })
         .map_err(|error| {
+            log::error!("Failed to create JobDoneWatcher: {}", error);
             anyhow::anyhow!("Failed to create job_done_watcher: {}", error)
         })
 }
 
 fn start_timer_job_done_watcher(job_done_watcher_id: &Uuid, timeout_secs: u64) {
-    println!("Start timeout {} for {}", timeout_secs, job_done_watcher_id);
+    log::info!("Starting timeout of {} seconds for JobDoneWatcher with ID: {}", timeout_secs, job_done_watcher_id);
+
     let job_done_watcher_id = job_done_watcher_id.clone();
     actix_web::rt::spawn(async move {
         actix_web::rt::time::sleep(Duration::from_secs(timeout_secs)).await;
-        println!("Timeout {} for {}", timeout_secs, job_done_watcher_id);
+        log::info!("Timeout reached for JobDoneWatcher ID: {}", job_done_watcher_id);
 
         let job_done_watcher_repository = repository::get_job_done_watcher_repository();
         let timeout_result = job_done_watcher_repository.update_watcher_status(&job_done_watcher_id, JobDoneWatcherStatus::Timeout).await;
 
         match timeout_result {
-            Ok(_) => {}
-            Err(error) => eprintln!("Timeout failed (job done watcher {}): {:#?}", job_done_watcher_id, error),
+            Ok(_) => log::info!("JobDoneWatcher {} updated to Timeout status", job_done_watcher_id),
+            Err(error) => log::error!("Failed to update JobDoneWatcher {} to Timeout: {:#?}", job_done_watcher_id, error),
         };
     });
 }
 
 pub async fn get_job_done_watchers() -> anyhow::Result<Vec<JobDoneWatcher>> {
+    log::info!("Fetching all JobDoneWatchers");
+
     let job_done_watcher_repository = repository::get_job_done_watcher_repository();
     job_done_watcher_repository.find_all_watchers().await
 }
 
 pub async fn get_job_done_watcher_by_id(job_done_watcher_id: &Uuid) -> anyhow::Result<Option<JobDoneWatcher>> {
+    log::info!("Fetching JobDoneWatcher by ID: {}", job_done_watcher_id);
+
     let job_done_watcher_repository = repository::get_job_done_watcher_repository();
     job_done_watcher_repository.find_watcher_by_id(job_done_watcher_id).await
 }
 
 pub async fn notify_job_done_watchers(job_name: &str) {
-    println!("notify_job_done_watchers {}", job_name);
+    log::info!("Notifying JobDoneWatchers for job: {}", job_name);
+
     let job_done_watcher_repository = repository::get_job_done_watcher_repository();
     let job_done_watchers =
         match job_done_watcher_repository.update_watchers_status_by_job_name_and_status(
@@ -80,13 +92,13 @@ pub async fn notify_job_done_watchers(job_name: &str) {
         ).await {
             Ok(updated_job_done_watchers) => updated_job_done_watchers,
             Err(error) => {
-                eprintln!("Unable to notify job watchers (job name {}): {:?}", job_name, error);
+                log::error!("Failed to notify JobDoneWatchers for job {}: {:?}", job_name, error);
                 return;
             }
         };
 
-    println!("update_watchers_status_by_job_name_and_status {}", job_name);
-    println!("job_done_watchers {}", job_done_watchers.len());
+    log::info!("Updated status for {} JobDoneWatchers for job: {}", job_done_watchers.len(), job_name);
+
     stream::iter(job_done_watchers.into_iter())
         .map(|job_done_watcher| call_job_done_trigger_webhooks(job_done_watcher))
         .buffer_unordered(10)
@@ -95,14 +107,15 @@ pub async fn notify_job_done_watchers(job_name: &str) {
         .iter()
         .for_each(|result| {
             match result {
-                Ok(job_done_watcher) => println!("Job Done Watcher {} notified!", job_done_watcher.id),
-                Err(error) => eprintln!("Error Job Done Watcher {:#?}", error),
+                Ok(job_done_watcher) => log::info!("JobDoneWatcher {} successfully notified!", job_done_watcher.id),
+                Err(error) => log::error!("Failed to notify JobDoneWatcher: {:#?}", error),
             }
         });
 }
 
 async fn call_job_done_trigger_webhooks(mut job_done_watcher: JobDoneWatcher) -> anyhow::Result<JobDoneWatcher> {
-    println!("calling webhooks {:?}", job_done_watcher);
+    log::info!("Calling webhooks for JobDoneWatcher {}", job_done_watcher.id);
+
     let job_done_trigger_webhooks = &mut job_done_watcher.job_done_trigger_webhooks;
     let total_webhooks = job_done_trigger_webhooks.len();
 
@@ -128,7 +141,7 @@ async fn call_job_done_trigger_webhooks(mut job_done_watcher: JobDoneWatcher) ->
         .filter(|result| match result {
             Ok(sent) => *sent,
             Err(error) => {
-                eprintln!("webhook failed: {:#?}", error);
+                log::warn!("Webhook failed: {:#?}", error);
                 false
             }
         })
@@ -141,15 +154,18 @@ async fn call_job_done_trigger_webhooks(mut job_done_watcher: JobDoneWatcher) ->
         total_webhooks_sent_successfully,
         total_webhooks_failed
     );
-    job_done_watcher.set_status(job_done_watcher_status);
 
+    job_done_watcher.set_status(job_done_watcher_status);
     let job_done_watcher_repository = repository::get_job_done_watcher_repository();
     job_done_watcher_repository.update_watcher_status(&job_done_watcher.id, job_done_watcher_status).await?;
+    log::info!("JobDoneWatcher {} status updated to {:?}", job_done_watcher.id, job_done_watcher_status);
     Ok(job_done_watcher)
 }
 
 async fn call_job_done_trigger_webhook(job_done_trigger_webhook: &mut JobDoneTriggerWebhook) -> anyhow::Result<bool> {
     let webhook_id = job_done_trigger_webhook.webhook_id;
+    log::info!("Calling webhook with ID: {}", webhook_id);
+
     match service::webhooks::get_webhook_by_id(&webhook_id).await? {
         Some(webhook) => {
             job_done_trigger_webhook.set_called_at(Utc::now());
@@ -157,17 +173,18 @@ async fn call_job_done_trigger_webhook(job_done_trigger_webhook: &mut JobDoneTri
             match http_client.post(webhook.url.to_string()).body(webhook.request_body).send().await {
                 Ok(_) => {
                     job_done_trigger_webhook.set_status(JobDoneTriggerWebhookStatus::Called);
+                    log::info!("Successfully called webhook with ID: {}", webhook_id);
                     Ok(true)
                 },
                 Err(err) => {
                     job_done_trigger_webhook.set_status(JobDoneTriggerWebhookStatus::Failed);
-                    eprintln!("Failed to call webhook: {}", err);
+                    log::error!("Failed to call webhook with ID {}: {}", webhook_id, err);
                     Ok(false)
                 }
             }
         },
         None => {
-            eprintln!("Webhook with id {} doesn't exist", webhook_id);
+            log::warn!("Webhook with ID {} doesn't exist", webhook_id);
             job_done_trigger_webhook.set_status(JobDoneTriggerWebhookStatus::Failed);
             Ok(false)
         }

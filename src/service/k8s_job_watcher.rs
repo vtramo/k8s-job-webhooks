@@ -13,26 +13,40 @@ use crate::service;
 const K8S_WEBHOOKS_CALLED_LABEL: &'static str = "app.k8s.job.webhooks/webhooks-called";
 
 pub async fn watch_jobs() {
+    log::info!("Starting K8S watch jobs...");
+
     let client = Client::try_default().await.unwrap();
     let jobs: Api<Job> = Api::default_namespaced(client);
     let stream = watcher(jobs.clone(), watcher::Config::default()).default_backoff().applied_objects();
     pin_mut!(stream);
 
+    log::info!("K8S job watcher initialized successfully.");
     while let Some(job) = stream.try_next().await.unwrap() {
+        log::debug!("Received job update: {:?}", job.name());
+
         if is_already_scanned_job(job.labels()) {
-            println!("is_already_scanned_job");
+            log::debug!("Job {:?} already scanned, skipping.", job.name());
             continue;
         }
 
         if let Some((job_name, job_status)) = job.name().zip(job.clone().status) {
+            log::debug!("Processing job: {}", job_name);
+
             if !is_successfully_completed_job(job_status) {
-                println!("!is_successfully_completed_job {}", job_name);
+                log::info!("Job {} not successfully completed, skipping.", job_name);
                 continue;
             }
 
+            log::info!("Job {} successfully completed, notifying watchers...", job_name);
             service::job_done_watchers::notify_job_done_watchers(&job_name).await;
 
-            let _ = add_webhooks_called_label(&jobs, &job_name).await; // TODO:
+            log::info!("Adding label to indicate webhooks have been called for job: {}", job_name);
+
+            if let Err(err) = add_webhooks_called_label(&jobs, &job_name).await {
+                log::warn!("Failed to add webhooks-called label to job {}: {:?}", job_name, err);
+            } else {
+                log::info!("Label added to job {} successfully.", job_name);
+            }
         }
     }
 }

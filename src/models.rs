@@ -235,7 +235,7 @@ impl<'de> Deserialize<'de> for Url {
         where
             D: Deserializer<'de>,
     {
-        let s: &str = Deserialize::deserialize(deserializer)?; // TODO:
+        let s: &str = Deserialize::deserialize(deserializer)?;
         Ok(Url(url::Url::parse(s).map_err(serde::de::Error::custom)?))
     }
 }
