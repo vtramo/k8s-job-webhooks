@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8s-job-monitor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: k8s-job-monitor
+  template:
+    metadata:
+      labels:
+        app: k8s-job-monitor
+    spec:
+      containers:
+        - name: k8s-job-monitor
+          image: localhost:5001/k8s-job-monitor:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+      restartPolicy: Always

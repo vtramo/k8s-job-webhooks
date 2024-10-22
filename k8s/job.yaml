@@ -1,0 +1,41 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: example-job
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: init-http-request
+          image: busybox
+          env:
+            - name: JOB_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['job-name']
+          command:
+            - "sh"
+            - "-c"
+            - |
+              requestBody='{
+                  "jobName": "$JOB_NAME",
+                  "timeoutSeconds": 0,
+                  "jobDoneTriggerWebhooks": [
+                    {
+                      "webhookId": "bb8d54c0-42f0-4d96-9e50-151645693a94",
+                      "timeoutSeconds": 0
+                    }
+                  ]
+              }'
+
+              requestBody=$(echo $requestBody | sed "s/\$JOB_NAME/$JOB_NAME/")
+
+              wget --header="Content-Type: application/json" \
+                --post-data="$requestBody" \
+                http://k8s-job-monitor-service:8080/job-done-watchers
+      containers:
+        - name: example-container
+          image: busybox
+          command: ["printenv"]
+      restartPolicy: Never
+  backoffLimit: 4

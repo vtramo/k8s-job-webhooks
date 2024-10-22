@@ -1,0 +1,46 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: example-cronjob
+spec:
+  schedule: "*/1 * * * *"
+  jobTemplate:
+    spec:
+      parallelism: 2 # => two init containers
+      completions: 2
+      template:
+        spec:
+          initContainers:
+            - name: init-http-request
+              image: busybox
+              env:
+                - name: JOB_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.labels['job-name']
+              command:
+                - "sh"
+                - "-c"
+                - |
+                  requestBody='{
+                      "jobName": "$JOB_NAME",
+                      "timeoutSeconds": 10,
+                      "jobDoneTriggerWebhooks": [
+                        {
+                          "webhookId": "78ba6986-b807-4241-9ffe-9389383e6cda",
+                          "timeoutSeconds": 0
+                        }
+                      ]
+                  }'
+
+                  requestBody=$(echo $requestBody | sed "s/\$JOB_NAME/$JOB_NAME/")
+
+                  wget --header="Content-Type: application/json" \
+                    --header="Idempotency-Key: $JOB_NAME" \
+                    --post-data="$requestBody" \
+                    http://k8s-job-monitor-service:8080/job-done-watchers
+          containers:
+            - name: echo-container
+              image: busybox
+              command: ["printenv"]
+          restartPolicy: OnFailure
