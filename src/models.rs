@@ -10,6 +10,7 @@ use yaml_rust2::Yaml;
 use crate::models::entity::{JobDoneTriggerWebhookEntity, JobDoneTriggerWebhookStatusEntity, JobDoneWatcherEntity, JobDoneWatcherStatusEntity, JobFamilyWatcherEntity, WebhookEntity};
 
 pub mod entity;
+pub mod service;
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
