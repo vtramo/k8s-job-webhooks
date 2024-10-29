@@ -11,15 +11,15 @@ use moka::sync::Cache;
 use sqlx::Acquire;
 use uuid::Uuid;
 
-use crate::models::{JobDoneTriggerWebhookStatus, JobDoneWatcher, JobDoneWatcherStatus};
 use crate::models::entity::JobDoneWatcherEntity;
+use crate::models::service::{JobDoneTriggerWebhookStatus, JobDoneWatcher, JobDoneWatcherStatus, JobName};
 use crate::repository::{SqliteDatabase, SqlxAcquire};
 
 #[async_trait]
 pub trait JobDoneWatcherRepository: Send + Sync {
     async fn find_all_watchers_by_job_name_and_status(
         &self,
-        job_name: &str, // TODO: newtype pattern
+        job_name: &JobName,
         status: JobDoneWatcherStatus
     ) -> anyhow::Result<Vec<JobDoneWatcher>>;
     async fn find_all_watchers(&self) -> anyhow::Result<Vec<JobDoneWatcher>>;
@@ -34,7 +34,7 @@ pub trait JobDoneWatcherRepository: Send + Sync {
     ) -> anyhow::Result<()>;
     async fn update_watchers_status_by_job_name_and_status(
         &self,
-        job_name: &str, // TODO: newtype pattern
+        job_name: &JobName,
         status: JobDoneWatcherStatus,
         new_status: JobDoneWatcherStatus
     ) -> anyhow::Result<Vec<JobDoneWatcher>>;
@@ -75,7 +75,7 @@ impl InMemoryJobDoneWatcherRepository {
 impl JobDoneWatcherRepository for InMemoryJobDoneWatcherRepository {
     async fn find_all_watchers_by_job_name_and_status(
         &self,
-        job_name: &str,
+        job_name: &JobName,
         status: JobDoneWatcherStatus
     ) -> anyhow::Result<Vec<JobDoneWatcher>> {
         Ok(stream::iter(self.job_done_watcher_by_id.iter())
@@ -83,7 +83,7 @@ impl JobDoneWatcherRepository for InMemoryJobDoneWatcherRepository {
                 let job_done_watcher = Arc::clone(&job_done_watcher);
                 async move {
                     let job_done_watcher = job_done_watcher.read().await;
-                    if &job_done_watcher.job_name == job_name && job_done_watcher.status == status {
+                    if job_done_watcher.job_name() == job_name.as_str() && job_done_watcher.status() == status {
                         Some(job_done_watcher.clone())
                     } else {
                         None
@@ -115,7 +115,7 @@ impl JobDoneWatcherRepository for InMemoryJobDoneWatcherRepository {
     }
 
     async fn create_watcher(&self, job_done_watcher: &JobDoneWatcher) -> anyhow::Result<()> {
-        self.job_done_watcher_by_id.insert(job_done_watcher.id.to_string(), Arc::new(RwLock::new(job_done_watcher.clone())));
+        self.job_done_watcher_by_id.insert(job_done_watcher.id().to_string(), Arc::new(RwLock::new(job_done_watcher.clone())));
         Ok(())
     }
 
@@ -123,7 +123,7 @@ impl JobDoneWatcherRepository for InMemoryJobDoneWatcherRepository {
         let id = id.to_string();
         if let Some(job_done_watcher) = self.job_done_watcher_by_id.get(&id) {
             let mut job_done_watcher = job_done_watcher.write().await;
-            job_done_watcher.status = job_done_watcher_status;
+            job_done_watcher.set_status(job_done_watcher_status);
             Ok(())
         } else {
             return Err(anyhow!("Job Done Watcher with id {} not found!", id));
@@ -140,8 +140,8 @@ impl JobDoneWatcherRepository for InMemoryJobDoneWatcherRepository {
         if let Some(job_done_watcher) = self.job_done_watcher_by_id.get(&id_str) {
             let mut watcher = job_done_watcher.write().await;
 
-            if watcher.status == status {
-                watcher.status = new_status;
+            if watcher.status() == status {
+                watcher.set_status(new_status);
             }
 
             Ok(())
@@ -152,7 +152,7 @@ impl JobDoneWatcherRepository for InMemoryJobDoneWatcherRepository {
 
     async fn update_watchers_status_by_job_name_and_status(
         &self,
-        job_name: &str,
+        job_name: &JobName,
         status: JobDoneWatcherStatus,
         new_status: JobDoneWatcherStatus
     ) -> anyhow::Result<Vec<JobDoneWatcher>> {
@@ -162,8 +162,8 @@ impl JobDoneWatcherRepository for InMemoryJobDoneWatcherRepository {
             let job_done_watcher = Arc::clone(&job_done_watcher);
             let mut watcher = job_done_watcher.write().await;
 
-            if watcher.job_name == job_name && watcher.status == status {
-                watcher.status = new_status;
+            if watcher.job_name() == job_name.as_str() && watcher.status() == status {
+                watcher.set_status(new_status);
                 updated_watchers.push(watcher.clone());
             }
         }
@@ -184,12 +184,12 @@ impl JobDoneWatcherRepository for InMemoryJobDoneWatcherRepository {
             let mut watcher = job_done_watcher.write().await;
 
             if let Some(trigger_webhook) = watcher
-                .job_done_trigger_webhooks
-                .iter_mut()
-                .find(|wh| wh.id == *job_done_trigger_webhook_id)
+                .job_done_trigger_webhooks_mut()
+                .into_iter()
+                .find(|wh| wh.id() == *job_done_trigger_webhook_id)
             {
-                trigger_webhook.status = job_done_trigger_webhook_status;
-                trigger_webhook.called_at = Some(job_done_trigger_webhook_called_at);
+                trigger_webhook.set_status(job_done_trigger_webhook_status);
+                trigger_webhook.set_called_at(job_done_trigger_webhook_called_at);
                 Ok(())
             } else {
                 Err(anyhow!(
@@ -208,13 +208,14 @@ impl JobDoneWatcherRepository for InMemoryJobDoneWatcherRepository {
 impl JobDoneWatcherRepository for SqliteDatabase {
     async fn find_all_watchers_by_job_name_and_status(
         &self,
-        job_name: &str, // TODO: newtype pattern
+        job_name: &JobName,
         status: JobDoneWatcherStatus
     ) -> anyhow::Result<Vec<JobDoneWatcher>> {
         let mut conn = self.acquire()
             .await
             .with_context(|| "Unable to acquire a database connection".to_string())?;
 
+        let job_name = job_name.to_string();
         let status = status.to_string();
         let job_done_watcher_entities: Vec<JobDoneWatcherEntity> =
             sqlx::query_file_as!(JobDoneWatcherEntity,
@@ -261,11 +262,11 @@ impl JobDoneWatcherRepository for SqliteDatabase {
 
         let mut tx = conn.begin().await?;
 
-        let job_done_watcher_id = job_done_watcher.id.to_string();
-        let job_done_watcher_job_name = job_done_watcher.job_name.clone();
-        let job_done_watcher_timeout_seconds = job_done_watcher.timeout_seconds;
-        let job_done_watcher_status = job_done_watcher.status.to_string();
-        let job_done_watcher_created_at = job_done_watcher.created_at;
+        let job_done_watcher_id = job_done_watcher.id().to_string();
+        let job_done_watcher_job_name = job_done_watcher.job_name();
+        let job_done_watcher_timeout_seconds = job_done_watcher.timeout_seconds();
+        let job_done_watcher_status = job_done_watcher.status().to_string();
+        let job_done_watcher_created_at = job_done_watcher.created_at();
 
         sqlx::query_file!("queries/sqlite/insert_job_done_watcher.sql",
             job_done_watcher_id,
@@ -278,15 +279,15 @@ impl JobDoneWatcherRepository for SqliteDatabase {
 
 
         let trigger_webhook_values: Vec<_> = job_done_watcher
-            .job_done_trigger_webhooks
+            .job_done_trigger_webhooks()
             .iter()
             .map(|job_done_trigger_webhook| {
                 (
-                    job_done_trigger_webhook.id.to_string(),
-                    job_done_trigger_webhook.webhook_id.to_string(),
+                    job_done_trigger_webhook.id().to_string(),
+                    job_done_trigger_webhook.webhook_id().to_string(),
                     job_done_watcher_id.clone(),
-                    job_done_trigger_webhook.timeout_seconds,
-                    job_done_trigger_webhook.status.to_string(),
+                    job_done_trigger_webhook.timeout_seconds(),
+                    job_done_trigger_webhook.status().to_string(),
                 )
             })
             .collect();
@@ -355,7 +356,7 @@ impl JobDoneWatcherRepository for SqliteDatabase {
 
     async fn update_watchers_status_by_job_name_and_status(
         &self,
-        job_name: &str, // TODO: newtype pattern
+        job_name: &JobName,
         status: JobDoneWatcherStatus,
         new_status: JobDoneWatcherStatus
     ) -> anyhow::Result<Vec<JobDoneWatcher>> {
@@ -373,6 +374,7 @@ impl JobDoneWatcherRepository for SqliteDatabase {
                 &self.id
             }
         }
+        let job_name = job_name.to_string();
         let status = status.to_string();
         let new_status = new_status.to_string();
         let ids: Vec<String> = sqlx::query_file_as!(

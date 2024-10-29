@@ -7,6 +7,7 @@ use kube::{Api, Client, ResourceExt};
 use kube::api::{Patch, PatchParams};
 use kube::runtime::{watcher, WatchStreamExt};
 use kube::runtime::reflector::Lookup;
+use crate::models::service::JobName;
 
 use crate::service;
 
@@ -34,6 +35,7 @@ pub async fn watch_jobs() {
         }
 
         if let Some((job_name, job_status)) = job.name().zip(job.clone().status) {
+            let job_name = JobName::new(job_name.as_ref()).expect("Creating JobName from job name k8s");
             log::debug!("Processing job: {}", job_name);
 
             if !is_successfully_completed_job(job_status) {

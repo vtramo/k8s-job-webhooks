@@ -1,12 +1,12 @@
 use futures_util::{stream, StreamExt};
 use reqwest::Client;
 
-use crate::models::{JobFamilyWatcher, Url};
+use crate::models::service::{HttpUrl, JobFamilyWatcher};
 use crate::repository;
 
 
 pub async fn create_job_family_watcher(job_family_watcher: JobFamilyWatcher) -> anyhow::Result<()> {
-    log::info!("Creating job family watcher (job family {})", job_family_watcher.job_family);
+    log::info!("Creating job family watcher (job family {})", job_family_watcher.job_family());
 
     let job_family_watcher_repository = repository::get_job_family_watcher_repository();
     job_family_watcher_repository.create_job_family_watcher(job_family_watcher).await?;
@@ -29,19 +29,24 @@ pub async fn notify_job_family_watchers(job_family: &str) {
     log::info!("Found {} job family watchers for job family: {}", job_family_watchers.len(), job_family);
 
     stream::iter(job_family_watchers.into_iter())
-        .for_each(|job_family_watcher|
+        .for_each(|job_family_watcher| async move {
             call_webhook(
-                job_family_watcher.url,
-                job_family_watcher.request_body,
+                job_family_watcher.url(),
+                job_family_watcher.request_body(),
                 job_family
-            )).await;
+            ).await;
+        }).await;
 }
 
-async fn call_webhook(url: Url, request_body: String, job_family: &str) {
+async fn call_webhook(url: &HttpUrl, request_body: &str, job_family: &str) {
     log::info!("Calling webhook for job family '{}' at URL: {}", job_family, url);
 
     let http_client = Client::new();
-    match http_client.post(url.to_string()).body(request_body).send().await {
+    match http_client
+        .post(url.to_string())
+        .body(request_body.to_string())
+        .send().await
+    {
         Ok(response) => {
             log::info!("Successfully called webhook at {} with status: {}", url, response.status());
             log::info!("Successfully called webhook");

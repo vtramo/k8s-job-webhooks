@@ -1,24 +1,24 @@
 use chrono::Utc;
 use uuid::Uuid;
 
-use crate::models::{CreateWebhookRequest, Webhook};
+use crate::models::service::{CreateWebhookRequest, Webhook};
 use crate::repository;
 
-pub async fn create_webhook(webhook: CreateWebhookRequest) -> anyhow::Result<Webhook> {
-    log::info!("Creating a new webhook with URL: {}", webhook.url);
+pub async fn create_webhook(create_webhook_request: CreateWebhookRequest) -> anyhow::Result<Webhook> {
+    log::info!("Creating a new webhook with URL: {}", create_webhook_request.url());
 
-    let webhook = Webhook {
-        id: Uuid::new_v4(),
-        url: webhook.url,
-        request_body: webhook.request_body,
-        description: webhook.description,
-        created_at: Utc::now(),
-    };
+    let webhook = Webhook::new(
+        Uuid::new_v4(),
+        create_webhook_request.url().clone(),
+        create_webhook_request.request_body(),
+        create_webhook_request.description(),
+        Utc::now(),
+    );
 
     let webhook_repository = repository::get_webhook_repository();
     match webhook_repository.create_webhook(&webhook).await {
         Ok(()) => {
-            log::info!("Successfully created webhook with ID: {}", webhook.id);
+            log::info!("Successfully created webhook with ID: {}", webhook.id());
             Ok(webhook)
         }
         Err(error) => {
@@ -52,7 +52,7 @@ pub async fn get_webhook_by_id(webhook_id: &Uuid) -> anyhow::Result<Option<Webho
 
     match webhook_repository.find_webhook_by_id(webhook_id).await {
         Ok(Some(webhook)) => {
-            log::info!("Successfully retrieved webhook with ID: {}", webhook.id);
+            log::info!("Successfully retrieved webhook with ID: {}", webhook.id());
             Ok(Some(webhook))
         }
         Ok(None) => {

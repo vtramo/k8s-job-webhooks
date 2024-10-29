@@ -5,12 +5,11 @@ use actix_web::{App, HttpServer, web};
 use actix_web::middleware::Logger;
 use futures_util::stream;
 use futures_util::StreamExt;
-use sqlx::sqlite::SqlitePoolOptions;
 use yaml_rust2::YamlLoader;
 
 use crate::{controller, repository, service};
 use crate::controller::IdempotencyMap;
-use crate::models::JobFamilyWatcher;
+use crate::models::service::JobFamilyWatcher;
 use crate::repository::SqlxAcquire;
 
 pub fn init_logging() -> anyhow::Result<()> {

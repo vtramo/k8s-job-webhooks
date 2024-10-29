@@ -6,7 +6,7 @@ use chrono::Utc;
 use uuid::Uuid;
 
 use crate::models::entity::JobFamilyWatcherEntity;
-use crate::models::JobFamilyWatcher;
+use crate::models::service::JobFamilyWatcher;
 use crate::repository::{SqliteDatabase, SqlxAcquire};
 
 static JOB_FAMILY_WATCHER_REPOSITORY: OnceLock<Arc<dyn JobFamilyWatcherRepository>> = OnceLock::new();
@@ -35,10 +35,10 @@ impl JobFamilyWatcherRepository for SqliteDatabase {
             .with_context(|| "Unable to acquire a database connection".to_string())?;
 
         let id = Uuid::new_v4().to_string();
-        let job_family = job_family_watcher.job_family;
-        let url = job_family_watcher.url.to_string();
-        let request_body = job_family_watcher.request_body;
-        let description = job_family_watcher.description;
+        let job_family = job_family_watcher.job_family();
+        let url = job_family_watcher.url().to_string();
+        let request_body = job_family_watcher.request_body();
+        let description = job_family_watcher.description();
         let created_at = Utc::now();
         sqlx::query_file!("queries/sqlite/insert_job_family_watcher.sql",
             id,
